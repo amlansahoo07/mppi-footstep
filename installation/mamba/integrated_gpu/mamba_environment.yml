@@ -1,0 +1,27 @@
+name: quadruped_pympc_env
+channels:
+- conda-forge
+- robostack-staging
+dependencies:
+- pip
+- python==3.11
+- casadi
+- numpy
+- matplotlib
+- jaxlib
+- jax
+- meshcat-python 
+- scipy==1.15.1 
+- pinocchio
+- adam-robotics[all]
+- compilers 
+- cmake 
+- pkg-config 
+- make 
+- tqdm
+- gymnasium
+- pip:
+  - mujoco
+  - readchar
+  - liecasadi
+
