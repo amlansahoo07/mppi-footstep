@@ -17,6 +17,7 @@ class SRBDControllerInterface:
         self.optimize_step_freq = cfg.mpc_params['optimize_step_freq']
         self.step_freq_available = cfg.mpc_params['step_freq_available']
 
+        self.use_random_gait = cfg.mpc_params.get('use_random_gait', False)
 
         self.previous_contact_mpc = np.array([1, 1, 1, 1])
         
@@ -66,16 +67,18 @@ class SRBDControllerInterface:
                 self.batched_controller = Acados_NMPC_GaitAdaptive()
 
         elif self.type == 'sampling':
-            if self.optimize_step_freq:
+            if self.use_random_gait:
+                from quadruped_pympc.controllers.sampling.random_gait_mppi import RandomGaitMPPI
+                self.controller = RandomGaitMPPI()
+                print("-----------------USING RANDOM GAIT MPPI------------------------")
+            elif self.optimize_step_freq:
                 from quadruped_pympc.controllers.sampling.centroidal_nmpc_jax_gait_adaptive import Sampling_MPC
+                self.controller = Sampling_MPC()
             else:
                 from quadruped_pympc.controllers.sampling.centroidal_nmpc_jax import Sampling_MPC
+                self.controller = Sampling_MPC()
 
-            self.controller = Sampling_MPC()
             
-
-
-    
 
     def compute_control(self, 
                         state_current: dict,
@@ -103,7 +106,7 @@ class SRBDControllerInterface:
                    and the best sample frequency (only if the controller is sampling)
         """
     
-
+        print("COMPUTING CONTROL USING SRBD CONTROLLER INTERFACE.....................")
         current_contact = np.array([contact_sequence[0][0],
                                     contact_sequence[1][0],
                                     contact_sequence[2][0],

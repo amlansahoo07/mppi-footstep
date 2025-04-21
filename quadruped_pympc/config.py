@@ -189,6 +189,11 @@ mpc_params = {
 
     # ----- END properties for the sampling-based mpc -----
 
+    'use_random_gait': True,  # Set to True to use random gait optimization
+    'num_gait_samples': 20,    # Number of contact sequences to try
+    'gait_stability_weight': 1.0,  # Weight for stability cost term
+    'min_support_legs': 2,     # Minimum legs required in stance
+
     }
 # -----------------------------------------------------------------------
 

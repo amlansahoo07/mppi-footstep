@@ -164,7 +164,7 @@ class WBInterface:
         self.pgg.run(simulation_dt, self.pgg.step_freq)
         contact_sequence = self.pgg.compute_contact_sequence(contact_sequence_dts=self.contact_sequence_dts, 
                                                 contact_sequence_lenghts=self.contact_sequence_lenghts)
-        print(contact_sequence)
+        # print(contact_sequence)
 
         previous_contact = self.current_contact
         self.current_contact = np.array([contact_sequence[0][0],
