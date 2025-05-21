@@ -10,3 +10,6 @@ This work builds upon the [Quadruped-PyMPC](https://github.com/iit-DLSLab/Quadru
 
 ### 1. **Contact Sequence Visualization**
    - Adding visualization for the contact sequence in the render block by modifying the `quadruped_utils.py` file.
+   <div align="center">
+    <img width="480" alt="Banner" src="https://github.com/user-attachments/assets/91b8ea91-4291-4448-a9c7-7a97987bf696">
+   </div>
