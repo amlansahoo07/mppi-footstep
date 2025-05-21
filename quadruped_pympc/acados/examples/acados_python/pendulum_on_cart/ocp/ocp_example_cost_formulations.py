@@ -198,7 +198,7 @@ def formulate_ocp(cost_version: str) -> AcadosOcp:
     return ocp
 
 
-def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', plot=False):
+def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', reformulate_to_external=False, plot=False):
 
     if cost_version == 'EXTERNAL':
         ext_cost_use_num_hess = True
@@ -219,7 +219,6 @@ def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', plot=
         ocp.solver_options.sim_method_num_steps = np.array([1] + (N-1)*[5])
     else:
         ocp = formulate_ocp(cost_version)
-
 
     # set options
     ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES, FULL_CONDENSING_DAQP, FULL_CONDENSING_HPIPM
@@ -245,6 +244,17 @@ def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', plot=
     #  [00, 00, @2, 00, 00],
     #  [00, 00, 00, @1, 00],
     #  [00, 00, 00, 00, @1]])
+
+    if reformulate_to_external:
+        ocp.solver_options.fixed_hess = 0
+        if cost_version in ['LS', 'NLS', 'NLS_Z', 'LS_Z', 'CONL', 'CONL_Z']:
+            p = ca.SX.sym('yref', ocp.cost.yref.shape[0])
+            p_values = ocp.cost.yref
+            yref = p
+            yref_e = p[:ocp.cost.yref_e.shape[0]]
+        else:
+            p = p_values = yref= yref_e = None
+        ocp.translate_cost_to_external_cost(p=p, p_values=p_values, yref=yref, yref_e=yref_e)
 
     # create solver
     ocp_solver = AcadosOcpSolver(ocp)
@@ -285,6 +295,29 @@ def main(cost_version: str, formulation_type='ocp', integrator_type='IRK', plot=
     if rel_diff_cost > 1e-6:
         raise Exception(f"Cost value is not correct: rel_diff_cost = {rel_diff_cost:.2e} > {1e-6}.")
 
+    # test getter
+    if formulation_type == 'mocp':
+        cost = ocp.cost[0]
+        cost_e = ocp.cost[-1]
+    else:
+        cost = cost_e = ocp.cost
+
+    if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']:
+        yref_ = ocp_solver.cost_get(1, 'yref')
+        assert np.allclose(yref_, cost.yref)
+
+    if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS']:
+        W_ = ocp_solver.cost_get(1, 'W')
+        assert np.allclose(W_, cost.W)
+
+    if cost_e.cost_type_e in ['LINEAR_LS', 'NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']:
+        yref_e_ = ocp_solver.cost_get(ocp.solver_options.N_horizon, 'yref')
+        assert np.allclose(yref_e_, cost_e.yref_e)
+
+    if cost.cost_type in ['LINEAR_LS', 'NONLINEAR_LS']:
+        W_e_ = ocp_solver.cost_get(ocp.solver_options.N_horizon, 'W')
+        assert np.allclose(W_e_, cost_e.W_e)
+
     # plot results
     if plot:
         plot_pendulum(np.linspace(0, T_HORIZON, N+1), FMAX, simU, simX, latexify=False)
@@ -298,6 +331,9 @@ if __name__ == "__main__":
         for formulation_type in ['ocp', 'mocp']:
             print(f"cost version: {cost_version}, formulation type: {formulation_type}")
             main(cost_version=cost_version, formulation_type=formulation_type, plot=False)
+
+        print(f"cost version: {cost_version} reformulated as EXTERNAL cost")
+        main(cost_version=cost_version, formulation_type='ocp', plot=False, reformulate_to_external=True)
 
 # timings
 # time_tot = 1e8

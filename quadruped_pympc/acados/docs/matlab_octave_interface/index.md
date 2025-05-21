@@ -3,7 +3,7 @@
 In order to use `acados` from Octave or Matlab, you need to create the `acados` shared libraries using either the `CMake` or `Make` build system, as described [on the installation page](../installation/index.md).
 
 ## Getting started
-Check out the examples [`new_minimal_example_ocp.m`](https://github.com/acados/acados/tree/master/examples/acados_matlab_octave/getting_started/new_minimal_example_sim.m) and [`new_minimal_example_sim.m`](https://github.com/acados/acados/tree/master/examples/acados_matlab_octave/getting_started/new_minimal_example_sim.m) to get started with the Matlab interface of `acados`.
+Check out the examples [`minimal_example_ocp.m`](https://github.com/acados/acados/tree/main/examples/acados_matlab_octave/getting_started/minimal_example_ocp.m) and [`minimal_example_sim.m`](https://github.com/acados/acados/tree/main/examples/acados_matlab_octave/getting_started/minimal_example_sim.m) to get started with the Matlab interface of `acados`.
 Note that `acados` currently supports both an old Matlab interface (< v0.4.0) as well as the new one (>= v0.4.0).
 Unfortunately, not all MATLAB examples have been ported to the new interface yet.
 If you are new to `acados` please start with [those examples](https://github.com/acados/acados/issues/1196#issuecomment-2311822122) that use the new interface already.
@@ -13,7 +13,7 @@ The examples require an installation of `CasADi` to generate the model functions
 The `getting_started` example offers the option to attempt to automatically download the correct version in the recommended folder.
 Detailed instructions for a manual installation can be found in the last section of this page [Setup CasADi](#setup-casadi).
 
-The problem formulation is stated in [this PDF](https://github.com/acados/acados/tree/master/docs/problem_formulation/problem_formulation_ocp_mex.pdf).
+The problem formulation is stated in [this PDF](https://github.com/acados/acados/tree/main/docs/problem_formulation/problem_formulation_ocp_mex.pdf).
 
 
 
@@ -36,9 +36,9 @@ Afterwards, launch `Matlab` or `Octave` from the same shell.
 If you want to run the examples in a different folder, please close the current shell and open a new one to repeat the procedure: this ensures the correct setting of the environment variables.
 
 ### Windows
-1. Open `Matlab` and navigate into [`<acados_root>/examples/acados_matlab_octave`](https://github.com/acados/acados/blob/master/examples/acados_matlab_octave).
-2. Run [`acados_env_variables_windows`](https://github.com/acados/acados/blob/master/examples/acados_matlab_octave/acados_env_variables_windows.m) to export the environment variable `ACADOS_INSTALL_DIR`.
-3. Navigate into [`<acados_root>/examples/acados_matlab_octave/getting_started`](https://github.com/acados/acados/tree/master/examples/acados_matlab_octave/getting_started) and run one of the examples.
+1. Open `Matlab` and navigate into [`<acados_root>/examples/acados_matlab_octave`](https://github.com/acados/acados/blob/main/examples/acados_matlab_octave).
+2. Run [`acados_env_variables_windows`](https://github.com/acados/acados/blob/main/examples/acados_matlab_octave/acados_env_variables_windows.m) to export the environment variable `ACADOS_INSTALL_DIR`.
+3. Navigate into [`<acados_root>/examples/acados_matlab_octave/getting_started`](https://github.com/acados/acados/tree/main/examples/acados_matlab_octave/getting_started) and run one of the examples.
 
 
 ## Interface structure
@@ -47,7 +47,7 @@ The nonlinear problem functions can be formulated using CasADi symbolics which a
 The whole problem description is written to a json-file which is then used to render different templates, via the `Tera` renderer.
 These are the same templates as in the Python interface (see [`Python interface`](../python_interface/index.md)).
 In addition to a `MEX` wrapper it contains all the `C` code that is needed for embedded deployment.
-These templates can be found in [`<acados_root>/interfaces/acados_template/acados_template/c_templates_tera`](https://github.com/acados/acados/tree/master/interfaces/acados_template/acados_template/c_templates_tera).
+These templates can be found in [`<acados_root>/interfaces/acados_template/acados_template/c_templates_tera`](https://github.com/acados/acados/tree/main/interfaces/acados_template/acados_template/c_templates_tera).
 
 ## Options documentation
 For the template based part of the `Matlab` interface, we refer to [the docstring based documentation of the Python interface](../python_interface/index.md).
@@ -55,9 +55,9 @@ For the template based part of the `Matlab` interface, we refer to [the docstrin
 ## Simulink
 The templates mentioned [above](#templates) also contain templated S-functions and corresponding make functions for both the OCP solver and the acados integrator.
 
-A basic Simulink example can be found in [`<acados_root>/examples/acados_python/getting_started/simulink_example.m`](https://github.com/acados/acados/blob/master/examples/acados_matlab_octave/getting_started/simulink_example.m)
+A basic Simulink example can be found in [`<acados_root>/examples/acados_python/getting_started/simulink_example.m`](https://github.com/acados/acados/blob/main/examples/acados_matlab_octave/getting_started/simulink_example.m)
 
-A more advanced Simulink example which showcases how to customize the inputs and outputs of the Simulink block corresponding to the solver can be found in [`<acados_root>/examples/acados_python/getting_started/simulink_example.m`](https://github.com/acados/acados/blob/master/examples/acados_matlab_octave/getting_started/simulink_example_advanced.m)
+A more advanced Simulink example which showcases how to customize the inputs and outputs of the Simulink block corresponding to the solver can be found in [`<acados_root>/examples/acados_python/getting_started/simulink_example.m`](https://github.com/acados/acados/blob/main/examples/acados_matlab_octave/getting_started/simulink_example_advanced.m)
 
 ### List of possible inputs
 This is a list of possible inputs to the Simulink block of an OCP solver which can be activated by setting the corresponding values in the acados Simulink options.
@@ -71,16 +71,16 @@ This is a list of possible inputs to the Simulink block of an OCP solver which c
 | `y_ref_0`         | Reference `y_ref` at stage 0                                                                  | `ny_0`                | Yes          |
 | `y_ref`           | `y_ref` concatenated for stages 1 to N-1                                                      | `(N-1) * ny`          | No           |
 | `y_ref_e`         | Reference `y_ref` at stage N                                                                  | `ny_e`                | Yes          |
-| `lbx`             | Lower bound x values concatenated for stages 1 to N-1                                         | `(N-1) * nbx`         | No           |
-| `ubx`             | Upper bound x values concatenated for stages 1 to N-1                                         | `(N-1) * nbx`         | No           |
+| `lbx`             | Lower bound x values concatenated for stages 1 to N-1                                         | `sum(nbx_i), for i = 1,..., N-1`         | Yes           |
+| `ubx`             | Upper bound x values concatenated for stages 1 to N-1                                         | `sum(nbx_i), for i = 1,..., N-1`         | Yes           |
 | `lbx_e`           | Lower bound x at shooting node N                                                              | `nbx_e`               | Yes          |
 | `ubx_e`           | Upper bound x at shooting node N                                                              | `nbx_e`               | Yes          |
 | `lbu`             | Lower bound u values concatenated for stages 0 to N-1                                         | `sum(nbu_i), for i = 0,..., N-1` | Yes          |
 | `ubu`             | Upper bound u values concatenated for stages 0 to N-1                                         | `sum(nbu_i), for i = 0,..., N-1` | Yes          |
 | `lg`              | Lower bound g values concatenated for stages 0 to N-1                                         | `sum(ng_i), for i = 0,..., N-1`  | No           |
 | `ug`              | Upper bound g values concatenated for stages 0 to N-1                                         | `sum(ng_i), for i = 0,..., N-1`  | No           |
-| `lh`              | Lower bound h values concatenated for stages 0 to N-1                                         | `sum(nh_i), for i = 0,..., N-1`  | No           |
-| `uh`              | Upper bound h values concatenated for stages 0 to N-1                                         | `sum(nh_i), for i = 0,..., N-1`  | No           |
+| `lh`              | Lower bound h values concatenated for stages 1 to N-1                                         | `sum(nh_i), for i = 1,..., N-1`  | Yes           |
+| `uh`              | Upper bound h values concatenated for stages 1 to N-1                                         | `sum(nh_i), for i = 1,..., N-1`  | Yes           |
 | `lh_0`            | Lower bound h at stage 0                                                                      | `nh_0`                | Yes          |
 | `uh_0`            | Upper bound h at stage 0                                                                      | `nh_0`                | Yes          |
 | `lh_e`            | Lower bound h at stage N                                                                      | `nh_e`                | Yes          |
@@ -127,7 +127,7 @@ This is a list of possible outputs of the Simulink block of an OCP solver which 
 
 
 ### Developing extensions
-If you want a more advanced interaction with the `acados` solver via Simulink, feel free to edit the corresponding templates in [`<acados_root>/interfaces/acados_template/acados_template/c_templates_tera/matlab_templates`](https://github.com/acados/acados/tree/master/interfaces/acados_template/acados_template/c_templates_tera/matlab_templates) to add more inputs or outputs.
+If you want a more advanced interaction with the `acados` solver via Simulink, feel free to edit the corresponding templates in [`<acados_root>/interfaces/acados_template/acados_template/c_templates_tera/matlab_templates`](https://github.com/acados/acados/tree/main/interfaces/acados_template/acados_template/c_templates_tera/matlab_templates) to add more inputs or outputs.
 
 ### S-function Mask
 The Simulink S-functions interface can be improved using the following mask commands, which shows the names of input and output ports, facilitating debugging operations.
@@ -158,7 +158,7 @@ To use the mask command just copy-paste it in the "icon drawing commands" field,
 To create external function for your problem, we suggest to use `CasADi` from the folder `<acados_root_folder>/external`.
 Depending on the environment you want to use to generate `CasADi` functions from, proceed with the corresponding paragraph (Matlab, Octave).
 
-Any CasADi version between 3.4.0 and 3.6.5 should work.
+Any CasADi version between 3.4.0 and 3.6.7 should work.
 If you don't have CasADi yet, you can install it as described below.
 
 ### **Matlab**
@@ -171,7 +171,17 @@ tar -xf casadi-linux-matlabR2014b-v3.4.0.tar.gz -C casadi-matlab
 cd ..
 ```
 
-### **Octave version 4.4 or later**
+### **Octave version 6.2 or later**
+Download and extract the `CasADi` binaries into `<acados_root_folder>/external/casadi-octave`:
+```
+cd external
+wget -O casadi-linux-octave.zip https://github.com/casadi/casadi/releases/download/3.6.7/casadi-3.6.7-linux64-octave7.3.0.zip
+mkdir -p casadi-octave
+unzip casadi-linux-octave.zip -d ./casadi-octave;
+```
+
+
+<!-- ### **Octave version 4.4 or later**
 Download and extract the `CasADi` binaries into `<acados_root_folder>/external/casadi-octave`:
 ```
 cd external
@@ -180,7 +190,7 @@ mkdir -p casadi-octave
 tar -xf casadi-linux-octave-4.4.1-v3.4.5.tar.gz -C casadi-octave
 ```
 
-### **Octave version 4.2 or earliear**
+### **Octave version 4.2 or earlier**
 Download and extract the `CasADi` binaries into `<acados_root_folder>/external/casadi-octave`:
 ```
 cd external
@@ -188,4 +198,4 @@ wget -q -nc --show-progress https://github.com/casadi/casadi/releases/download/3
 mkdir -p casadi-octave
 tar -xf casadi-linux-octave-v3.4.0.tar.gz -C casadi-octave
 cd ..
-```
+``` -->

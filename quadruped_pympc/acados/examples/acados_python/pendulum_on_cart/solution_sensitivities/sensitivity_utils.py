@@ -1,3 +1,34 @@
+# -*- coding: future_fstrings -*-
+#
+# Copyright (c) The acados authors.
+#
+# This file is part of acados.
+#
+# The 2-Clause BSD License
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.;
+#
+
 import numpy as np
 import casadi as ca
 import matplotlib.pyplot as plt
@@ -5,7 +36,7 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, latexify_pl
 
 latexify_plot()
 
-def export_pendulum_ode_model_with_mass_as_param(dt) -> AcadosModel:
+def export_pendulum_ode_model_with_mass_as_p_global(dt) -> AcadosModel:
 
     model_name = 'pendulum_parametric'
 
@@ -66,22 +97,33 @@ def export_pendulum_ode_model_with_mass_as_param(dt) -> AcadosModel:
     model.x = x
     model.xdot = xdot
     model.u = u
-    model.p = p
+    model.p_global = p
     model.name = model_name
+
+    # store meta information
+    model.x_labels = ['$x$ [m]', r'$\theta$ [rad]', '$v$ [m]', r'$\dot{\theta}$ [rad/s]']
+    model.u_labels = ['$F$']
+    model.t_label = '$t$ [s]'
 
     return model
 
 
 def export_parametric_ocp(
     x0=np.array([0.0, np.pi / 6, 0.0, 0.0]), N_horizon=50, T_horizon=2.0, Fmax=80.0,
-    hessian_approx = "GAUSS_NEWTON", qp_solver_ric_alg=1
+    hessian_approx = "GAUSS_NEWTON", qp_solver_ric_alg=1,
+    cost_scale_as_param=False,
+    with_parametric_constraint=True,
+    with_nonlinear_constraint=True
 ) -> AcadosOcp:
 
     ocp = AcadosOcp()
     dt = T_horizon/N_horizon
-    ocp.model = export_pendulum_ode_model_with_mass_as_param(dt=dt)
+    ocp.model = export_pendulum_ode_model_with_mass_as_p_global(dt=dt)
 
     ocp.solver_options.N_horizon = N_horizon
+
+    # set mass to one
+    ocp.p_global_values = np.ones((1,))
 
     Q_mat = 2 * np.diag([1e3, 1e3, 1e-2, 1e-2])
     R_mat = 2 * np.diag([1e-1])
@@ -89,18 +131,33 @@ def export_parametric_ocp(
     ocp.cost.cost_type = "EXTERNAL"
     ocp.cost.cost_type_e = "EXTERNAL"
 
+    if cost_scale_as_param:
+        # add parameter to model
+        cost_scale_param = ca.SX.sym('cost_scale_param')
+        ocp.model.p_global = ca.vertcat(ocp.model.p_global, cost_scale_param)
+        ocp.p_global_values = np.concatenate((ocp.p_global_values, np.ones((1,))))
+        # add nonlinear dependency in cost
+        cost_scale_factor = ca.exp(cost_scale_param)
+    else:
+        cost_scale_factor = 1.0
+
     # NOTE here we make the cost parametric
-    ocp.model.cost_expr_ext_cost = ca.exp(ocp.model.p) * ocp.model.x.T @ Q_mat @ ocp.model.x + ocp.model.u.T @ R_mat @ ocp.model.u
-    ocp.model.cost_expr_ext_cost_e = ca.exp(ocp.model.p) * ocp.model.x.T @ Q_mat @ ocp.model.x
+    ocp.model.cost_expr_ext_cost = cost_scale_factor * ocp.model.x.T @ Q_mat @ ocp.model.x + ocp.model.u.T @ R_mat @ ocp.model.u
+    ocp.model.cost_expr_ext_cost_e = cost_scale_factor * ocp.model.x.T @ Q_mat @ ocp.model.x
 
     ocp.constraints.lbu = np.array([-Fmax])
     ocp.constraints.ubu = np.array([+Fmax])
     ocp.constraints.idxbu = np.array([0])
 
-    ocp.constraints.x0 = x0
+    if with_parametric_constraint:
+        if with_nonlinear_constraint:
+            ocp.model.con_h_expr = -ocp.model.x[0] * ocp.model.p_global[0]**2
+        else:
+            ocp.model.con_h_expr = -ocp.model.x[0] * ocp.model.p_global[0]
+        ocp.constraints.lh = np.array([-1.5])
+        ocp.constraints.uh = np.array([1.5])
 
-    # set mass to one
-    ocp.parameter_values = np.ones((1,))
+    ocp.constraints.x0 = x0
 
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.integrator_type = "DISCRETE"
@@ -112,10 +169,11 @@ def export_parametric_ocp(
     ocp.solver_options.qp_solver_ric_alg = qp_solver_ric_alg
     ocp.solver_options.hessian_approx = hessian_approx
     if hessian_approx == 'EXACT':
-        ocp.solver_options.nlp_solver_step_length = 0.0
+        # sensitivity solver settings!
+        ocp.solver_options.globalization_fixed_step_length = 0.0 # to not perfrom an SQP step update
         ocp.solver_options.nlp_solver_max_iter = 1
         ocp.solver_options.qp_solver_iter_max = 200
-        ocp.solver_options.tol = 1e-10
+        ocp.solver_options.tol = 1e-10  # to "force" a QP solve
         ocp.solver_options.with_solution_sens_wrt_params = True
         ocp.solver_options.with_value_sens_wrt_params = True
     else:
@@ -124,74 +182,48 @@ def export_parametric_ocp(
 
     return ocp
 
-
-def evaluate_hessian_eigenvalues(acados_solver: AcadosOcpSolver, N_horizon: int):
-    offset = 0
-    min_eigv_total = 1e12
-    min_abs_eigv = 1e12
-
-    for i in range(N_horizon+1):
-        hess_block_acados = acados_solver.get_hessian_block(i)
-        nv = hess_block_acados.shape[0]
-        offset += nv
-
-        eigv = np.linalg.eigvals(hess_block_acados)
-        min_eigv = np.min(eigv)
-        min_eigv_total = min(min_eigv, min_eigv_total)
-        min_abs_eigv = min(min_abs_eigv, np.min(np.abs(eigv)))
-
-    # check projected Hessian
-    min_abs_eig_proj_hess = 1e12
-    min_eig_proj_hess = 1e12
-    min_eig_P = 1e12
-    min_abs_eig_P = 1e12
-    for i in range(1, N_horizon):
-        P_mat = acados_solver.get_from_qp_in(i, 'P')
-        B_mat = acados_solver.get_from_qp_in(i-1, 'B')
-        # Lr: lower triangular decomposition of R within Riccati != R in qp_in!
-        Lr = acados_solver.get_from_qp_in(i-1, 'Lr')
-        R_ric = Lr @ Lr.T
-        proj_hess_block = R_ric + B_mat.T @ P_mat @ B_mat
-        eigv = np.linalg.eigvals(proj_hess_block)
-        min_eigv = np.min(eigv)
-        min_eig_proj_hess = min(min_eigv, min_eig_proj_hess)
-        min_abs_eig_proj_hess = min(min_abs_eig_proj_hess, np.min(np.abs(eigv)))
-        # P
-        eigv = np.linalg.eigvals(P_mat)
-        min_eig_P = min(min_eig_P, np.min(eigv))
-        min_abs_eig_P = min(min_abs_eig_P, np.min(np.abs(eigv)))
-
-    return min_eigv_total, min_abs_eigv, min_abs_eig_proj_hess, min_eig_proj_hess, min_eig_P, min_abs_eig_P
-
-
-def plot_cost_gradient_results(p_test, cost_values, acados_cost_grad, np_cost_grad, cost_reconstructed_np_grad):
+def plot_cost_gradient_results(p_test, cost_values, acados_cost_grad, np_cost_grad,
+                               cost_reconstructed_np_grad, cost_reconstructed_acados=None,
+                               y_scale_log=True, xlabel=None, title=None):
     _, ax = plt.subplots(nrows=4, ncols=1, sharex=True, figsize=(9,9))
 
     ax[0].plot(p_test, cost_values, label='cost acados', color='k')
     ax[0].plot(p_test, cost_reconstructed_np_grad, "--", label='reconstructed from finite diff')
+    if cost_reconstructed_acados is not None:
+        ax[0].plot(p_test, cost_reconstructed_acados, ":", label='reconstructed from acados derivatives')
     ax[0].set_ylabel(r"cost")
 
-    ax[1].plot(p_test, np_cost_grad, "--", label='finite diff')
-    ax[1].plot(p_test, acados_cost_grad, "--", label='acados')
-    ax[1].set_ylabel(r"$\partial_p V^*$")
-    ax[1].set_yscale("log")
+    ax[1].plot(p_test, np.abs(np_cost_grad), "--", label='finite diff')
+    ax[1].plot(p_test, np.abs(acados_cost_grad), ":", label='acados')
+    ax[1].set_ylabel(r"$|\partial_p V^*|$")
+
+    if y_scale_log:
+        ax[1].set_yscale("log")
 
     # plot differences
     isub = 2
     ax[isub].plot(p_test, np.abs(acados_cost_grad - np_cost_grad), "--", label='acados vs. finite diff')
-    ax[isub].set_ylabel(r"difference $\partial_p V^*$")
-    ax[isub].set_yscale("log")
+    ax[isub].set_ylabel(r"abs diff $\partial_p V^*$")
+
+    if y_scale_log:
+        ax[isub].set_yscale("log")
 
     isub += 1
     ax[isub].plot(p_test, np.abs(acados_cost_grad - np_cost_grad) / np.abs(np_cost_grad), "--", label='acados vs. finite diff')
     ax[isub].set_ylabel(r"rel. diff. $\partial_p V^*$")
-    ax[isub].set_yscale("log")
+
+    if y_scale_log:
+        ax[isub].set_yscale("log")
 
     for i in range(isub+1):
         ax[i].grid()
         ax[i].legend()
 
-    ax[-1].set_xlabel(f"mass")
+    if xlabel is not None:
+        ax[-1].set_xlabel(xlabel)
+
+    if title is not None:
+        ax[0].set_title(title)
     ax[-1].set_xlim([p_test[0], p_test[-1]])
 
     fig_filename = f"cost_gradient.pdf"
@@ -200,21 +232,25 @@ def plot_cost_gradient_results(p_test, cost_values, acados_cost_grad, np_cost_gr
     plt.show()
 
 
-def plot_results(p_test, pi, pi_reconstructed_acados, pi_reconstructed_np_grad, sens_u, np_grad,
+def plot_solution_sensitivities_results(p_test, pi, pi_reconstructed_acados, pi_reconstructed_np_grad, sens_u, np_grad,
                  min_eig_full=None, min_eig_proj_hess=None, min_eig_P=None,
                  min_abs_eig_full=None, min_abs_eig_proj_hess=None, min_abs_eig_P=None,
-                 eigen_analysis=False, qp_solver_ric_alg=1, parameter_name=""):
+                 eigen_analysis=False, title=None, parameter_name="",
+                 max_lam_parametric_constraint=None, sum_lam_parametric_constraint=None):
 
     nsub = 5 if eigen_analysis else 3
+    if max_lam_parametric_constraint is not None:
+        nsub += 1
 
     _, ax = plt.subplots(nrows=nsub, ncols=1, sharex=True, figsize=(9,9))
 
     isub = 0
     ax[isub].plot(p_test, pi, label='acados', color='k')
-    ax[isub].plot(p_test, pi_reconstructed_acados, "--", label='reconstructed from acados')
+    ax[isub].plot(p_test, pi_reconstructed_acados, "--", label='reconstructed from acados solution sensitivities')
     ax[isub].plot(p_test, pi_reconstructed_np_grad, "--", label='reconstructed from finite diff')
     ax[isub].set_ylabel(r"$u$")
-    ax[isub].set_title(f'qp_solver_ric_alg {qp_solver_ric_alg}')
+    if title is not None:
+        ax[isub].set_title(title)
 
     isub += 1
     ax[isub].plot(p_test, sens_u, label="acados")
@@ -226,6 +262,14 @@ def plot_results(p_test, pi, pi_reconstructed_acados, pi_reconstructed_np_grad, 
     ax[isub].plot(p_test, np.abs(sens_u- np_grad), "--", label='acados - finite diff')
     ax[isub].set_ylabel(r"diff $\partial_p u$")
     ax[isub].set_yscale("log")
+
+    if max_lam_parametric_constraint is not None:
+        isub += 1
+        ax[isub].plot(p_test, max_lam_parametric_constraint, label=r'max $\lambda$ parametric constraint')
+        # ax[isub].set_ylabel("max lam parametric constraint")
+        ax[isub].set_yscale("log")
+        if sum_lam_parametric_constraint is not None:
+            ax[isub].plot(p_test, sum_lam_parametric_constraint, label=r'sum $\lambda$ parametric constraint')
 
     if eigen_analysis:
         isub += 1
@@ -247,7 +291,54 @@ def plot_results(p_test, pi, pi_reconstructed_acados, pi_reconstructed_np_grad, 
 
     ax[-1].set_xlabel(f"{parameter_name}")
 
-    fig_filename = f"solution_sens_{qp_solver_ric_alg}.pdf"
+    fig_filename = f"solution_sens_{title}.pdf"
     plt.savefig(fig_filename)
     print(f"stored figure as {fig_filename}")
     plt.show()
+
+
+
+def plot_pendulum(t, u_max, U, X_true, latexify=False, plt_show=True, time_label='$t$', x_labels=None, u_labels=None):
+    """
+    Params:
+        t: time values of the discretization
+        u_max: maximum absolute value of u
+        U: arrray with shape (N_sim-1, nu) or (N_sim, nu)
+        X_true: arrray with shape (N_sim, nx)
+        latexify: latex style plots
+    """
+
+    if latexify:
+        latexify_plot()
+
+    nx = X_true.shape[1]
+    fig, axes = plt.subplots(nx+1, 1, sharex=True)
+
+    for i in range(nx):
+        axes[i].plot(t, X_true[:, i])
+        axes[i].grid()
+        if x_labels is not None:
+            axes[i].set_ylabel(x_labels[i])
+        else:
+            axes[i].set_ylabel(f'$x_{i}$')
+
+    axes[-1].step(t, np.append([U[0]], U))
+
+    if u_labels is not None:
+        axes[-1].set_ylabel(u_labels[0])
+    else:
+        axes[-1].set_ylabel('$u$')
+
+    axes[-1].hlines(u_max, t[0], t[-1], linestyles='dashed', alpha=0.7)
+    axes[-1].hlines(-u_max, t[0], t[-1], linestyles='dashed', alpha=0.7)
+    axes[-1].set_ylim([-1.2*u_max, 1.2*u_max])
+    axes[-1].set_xlim(t[0], t[-1])
+    axes[-1].set_xlabel(time_label)
+    axes[-1].grid()
+
+    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
+
+    fig.align_ylabels()
+
+    if plt_show:
+        plt.show()

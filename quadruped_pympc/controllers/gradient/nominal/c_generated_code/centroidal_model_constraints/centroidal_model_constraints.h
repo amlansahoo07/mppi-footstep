@@ -49,7 +49,6 @@ const int *centroidal_model_constr_h_fun_jac_uxt_zt_sparsity_in(int);
 const int *centroidal_model_constr_h_fun_jac_uxt_zt_sparsity_out(int);
 int centroidal_model_constr_h_fun_jac_uxt_zt_n_in(void);
 int centroidal_model_constr_h_fun_jac_uxt_zt_n_out(void);
-real_t* centroidal_model_constr_h_fun_jac_uxt_zt_get_pool_double(const char*);
 
 int centroidal_model_constr_h_fun(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
 int centroidal_model_constr_h_fun_work(int *, int *, int *, int *);
@@ -57,7 +56,10 @@ const int *centroidal_model_constr_h_fun_sparsity_in(int);
 const int *centroidal_model_constr_h_fun_sparsity_out(int);
 int centroidal_model_constr_h_fun_n_in(void);
 int centroidal_model_constr_h_fun_n_out(void);
-real_t* centroidal_model_constr_h_fun_get_pool_double(const char*);
+
+
+
+
 
 
 
@@ -69,7 +71,6 @@ const int *centroidal_model_constr_h_0_fun_jac_uxt_zt_sparsity_in(int);
 const int *centroidal_model_constr_h_0_fun_jac_uxt_zt_sparsity_out(int);
 int centroidal_model_constr_h_0_fun_jac_uxt_zt_n_in(void);
 int centroidal_model_constr_h_0_fun_jac_uxt_zt_n_out(void);
-real_t* centroidal_model_constr_h_0_fun_jac_uxt_zt_get_pool_double(const char*);
 
 int centroidal_model_constr_h_0_fun(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
 int centroidal_model_constr_h_0_fun_work(int *, int *, int *, int *);
@@ -77,7 +78,10 @@ const int *centroidal_model_constr_h_0_fun_sparsity_in(int);
 const int *centroidal_model_constr_h_0_fun_sparsity_out(int);
 int centroidal_model_constr_h_0_fun_n_in(void);
 int centroidal_model_constr_h_0_fun_n_out(void);
-real_t* centroidal_model_constr_h_0_fun_get_pool_double(const char*);
+
+
+
+
 
 
 

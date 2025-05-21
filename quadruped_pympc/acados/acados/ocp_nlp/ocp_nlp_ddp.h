@@ -64,6 +64,7 @@ typedef struct
     int ext_qp_res;      // compute external QP residuals (i.e. at SQP level) at each SQP iteration (for debugging)
     int qp_warm_start;   // qp_warm_start in all but the first ddp iterations
     bool warm_start_first_qp; // to set qp_warm_start in first iteration
+    bool warm_start_first_qp_from_nlp;
     bool eval_residual_at_max_iter; // if convergence should be checked after last iterations or only throw max_iter reached
 } ocp_nlp_ddp_opts;
 
@@ -106,9 +107,9 @@ typedef struct
 } ocp_nlp_ddp_memory;
 
 //
-acados_size_t ocp_nlp_ddp_memory_calculate_size(void *config, void *dims, void *opts_);
+acados_size_t ocp_nlp_ddp_memory_calculate_size(void *config, void *dims, void *opts_, void *in_);
 //
-void *ocp_nlp_ddp_memory_assign(void *config, void *dims, void *opts_, void *raw_memory);
+void *ocp_nlp_ddp_memory_assign(void *config, void *dims, void *opts_, void *in_, void *raw_memory);
 //
 void ocp_nlp_ddp_memory_reset_qp_solver(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
     void *opts_, void *mem_, void *work_);
@@ -129,7 +130,7 @@ typedef struct
 } ocp_nlp_ddp_workspace;
 
 //
-acados_size_t ocp_nlp_ddp_workspace_calculate_size(void *config, void *dims, void *opts_);
+acados_size_t ocp_nlp_ddp_workspace_calculate_size(void *config, void *dims, void *opts_, void *in_);
 
 
 

@@ -29,6 +29,7 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
+from typing import Union
 import json
 import os
 import shutil
@@ -42,6 +43,10 @@ else:
     from ctypes import CDLL as DllLoader
 import numpy as np
 from casadi import DM, MX, SX, CasadiMeta, Function
+from contextlib import contextmanager
+
+
+
 
 ALLOWED_CASADI_VERSIONS = (
     '3.4.0',
@@ -59,6 +64,7 @@ ALLOWED_CASADI_VERSIONS = (
     '3.6.4',
     '3.6.5',
     '3.6.6',
+    '3.6.7',
 )
 
 TERA_VERSION = "0.0.34"
@@ -70,6 +76,17 @@ PLATFORM2TERA = {
 }
 
 ACADOS_INFTY = 1e10
+
+@contextmanager
+def set_directory(path: str):
+    """Sets the cwd within the context"""
+    origin = os.getcwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(origin)
+
 
 def check_if_square(mat: np.ndarray, name: str):
     if mat.shape[0] != mat.shape[1]:
@@ -143,7 +160,7 @@ def check_casadi_version():
 
 def check_casadi_version_supports_p_global():
     try:
-        from casadi import extract_parametric, cse, blazing_spline
+        from casadi import extract_parametric, cse
     except:
         raise Exception("CasADi version does not support extract_parametric or cse functions.\nNeeds nightly-se2 release or later, see: https://github.com/casadi/casadi/releases/tag/nightly-se2")
 
@@ -187,6 +204,8 @@ def is_empty(x):
         return True
     elif isinstance(x, (set, list)):
         return True if len(x) == 0 else False
+    elif isinstance(x, (float, int)):
+        return False
     else:
         raise Exception("is_empty expects one of the following types: casadi.MX, casadi.SX, "
                         + "None, numpy array empty list, set. Got: " + str(type(x)))
@@ -283,25 +302,23 @@ def render_template(in_file, out_file, output_dir, json_path, template_glob=None
     if template_glob is None:
         head, in_file = os.path.split(in_file)
         template_glob = os.path.join(acados_path, 'c_templates_tera', head, '**', '*')
-    cwd = os.getcwd()
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    os.chdir(output_dir)
 
-    tera_path = get_tera()
+    with set_directory(output_dir):
+        tera_path = get_tera()
 
-    # call tera as system cmd
-    os_cmd = f"{tera_path} '{template_glob}' '{in_file}' '{json_path}' '{out_file}'"
-    # Windows cmd.exe can not cope with '...', so use "..." instead:
-    if os.name == 'nt':
-        os_cmd = os_cmd.replace('\'', '\"')
+        # call tera as system cmd
+        os_cmd = f"{tera_path} '{template_glob}' '{in_file}' '{json_path}' '{out_file}'"
+        # Windows cmd.exe can not cope with '...', so use "..." instead:
+        if os.name == 'nt':
+            os_cmd = os_cmd.replace('\'', '\"')
 
-    status = os.system(os_cmd)
-    if status != 0:
-        raise Exception(f'Rendering of {in_file} failed!\n\nAttempted to execute OS command:\n{os_cmd}\n\n')
+        status = os.system(os_cmd)
+        if status != 0:
+            raise Exception(f'Rendering of {in_file} failed!\n\nAttempted to execute OS command:\n{os_cmd}\n\n')
 
-    os.chdir(cwd)
 
 
 def casadi_expr_to_string(expr) -> str:
@@ -505,7 +522,7 @@ def idx_perm_to_ipiv(idx_perm):
     return ipiv
 
 
-def print_casadi_expression(f):
+def print_casadi_expression(f: Union[MX, SX, DM]):
     for ii in range(casadi_length(f)):
         print(f[ii,:])
 

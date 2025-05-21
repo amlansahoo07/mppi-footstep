@@ -59,7 +59,14 @@ classdef acados_sim_opts < handle
             obj.opts_struct.jac_reuse = 'false';
             obj.opts_struct.gnsf_detect_struct = 'true';
             obj.opts_struct.output_dir = fullfile(pwd, 'build');
-            obj.opts_struct.ext_fun_compile_flags = '-O2';
+            % check whether flags are provided by environment variable
+            env_var = getenv("ACADOS_EXT_FUN_COMPILE_FLAGS");
+            if isempty(env_var)
+                obj.opts_struct.ext_fun_compile_flags = '-O2';
+            else
+                obj.opts_struct.ext_fun_compile_flags = env_var;
+            end
+            obj.opts_struct.ext_fun_expand = false;
             obj.opts_struct.parameter_values = [];
         end
 
@@ -74,6 +81,8 @@ classdef acados_sim_opts < handle
                 obj.opts_struct.compile_interface = value;
             elseif (strcmp(field, 'ext_fun_compile_flags'))
                 obj.opts_struct.ext_fun_compile_flags = value;
+            elseif (strcmp(field, 'ext_fun_expand'))
+                obj.opts_struct.ext_fun_expand = value;
             elseif (strcmp(field, 'codgen_model'))
                 warning('codgen_model is deprecated and has no effect.');
             elseif (strcmp(field, 'compile_model'))

@@ -32,94 +32,71 @@ classdef GenerateContext < handle
     properties
         p_global
         problem_name
-        pool_names
-        p_global_expressions
         opts
         casadi_codegen_opts
         list_funname_dir_pairs  % list of (function_name, output_dir) pairs, files that are generated
         generic_funname_dir_pairs % list of (function_name, output_dir) pairs, files that are not generated
-        functions_to_generate
+        function_input_output_pairs
         casadi_fun_opts
+        global_data_sym
+        global_data_expr
     end
 
     methods
         function obj = GenerateContext(p_global, problem_name, opts)
+            import casadi.*
             if nargin < 3
                 opts = [];
             end
             obj.p_global = p_global;
+
+            if ~(isempty(obj.p_global) || length(obj.p_global) == 0)
+                check_casadi_version_supports_p_global();
+            end
             obj.problem_name = problem_name;
 
-            obj.pool_names = {};
-            obj.p_global_expressions = [];
+            obj.global_data_sym = [];
+            obj.global_data_expr = [];
 
             obj.opts = opts;
             obj.casadi_codegen_opts = struct();
             obj.casadi_codegen_opts.mex = false;
             obj.casadi_codegen_opts.casadi_int = 'int';
             obj.casadi_codegen_opts.casadi_real = 'double';
+            try
+                CodeGenerator('foo', struct('force_canonical', true))
+                obj.casadi_codegen_opts.force_canonical = false;
+            catch
+                % Option does not exist
+            end
 
             obj.list_funname_dir_pairs = {};
-            obj.functions_to_generate = {};
+            obj.function_input_output_pairs = {};
             obj.generic_funname_dir_pairs = {};
 
             obj.casadi_fun_opts = struct();
 
-            import casadi.*
             try
                 dummy = MX.sym('dummy');
                 cse(dummy); % Check if cse exists
                 obj.casadi_fun_opts.cse = true;
             catch
-                disp('NOTE: Please consider updating to CasADi 3.6.6 which supports common subexpression elimination. \nThis might speed up external function evaluation.');
+                disp('NOTE: Please consider updating to CasADi 3.6.6 which supports common subexpression elimination. This might speed up external function evaluation.');
             end
         end
 
         function obj = add_function_definition(obj, name, inputs, outputs, output_dir)
-            import casadi.*
-
-            if isempty(obj.p_global) || length(obj.p_global) == 0
-                % normal behavior (p_global is empty)
-                fun = Function(name, inputs, outputs, obj.casadi_fun_opts);
-                obj = obj.add_function(name, output_dir, fun);
-            else
-                check_casadi_version_supports_p_global();
-
-                outputs = cse(outputs);
-
-                % This introduces novel symbols into the graph (extracted1, extracted2,...)
-                [outputs_ret, symbols, param] = extract_parametric(outputs, obj.p_global);
-
-                pools = {};
-                for i = 1:numel(symbols)
-                    name_e = [name, '|', num2str(i)];
-                    pools{end+1} = MX(DM.zeros(symbols{i}.sparsity()), name_e);
-                    obj.pool_names{end+1} = name_e;
-                end
-
-                outputs_ret = substitute(outputs_ret, symbols, pools);
-                obj.p_global_expressions = [obj.p_global_expressions, param];
-
-                fun_mod = Function(name, inputs, outputs_ret, obj.casadi_fun_opts);
-                obj = obj.add_function(name, output_dir, fun_mod);
-            end
+            obj.list_funname_dir_pairs{end+1} = {name, output_dir};
+            obj.function_input_output_pairs{end+1} = {inputs, outputs};
         end
 
         function obj = finalize(obj)
             import casadi.*
             if ~(isempty(obj.p_global) || length(obj.p_global) == 0)
-                y = {};
-                for i=1:length(obj.p_global_expressions)
-                    y{end+1} = cse(obj.p_global_expressions{i});
-                end
-                output_dir = obj.opts.code_export_directory;
-                fun_name = [obj.problem_name, '_p_global_precompute_fun'];
-
-                fun = Function(fun_name, {obj.p_global}, y, {'p_global'}, obj.pool_names);
-                obj = obj.add_function(fun_name, output_dir, fun);
+                obj.setup_p_global_precompute_fun()
             end
 
-            obj = obj.generate_functions();
+            obj.generate_functions();
         end
 
 
@@ -154,20 +131,120 @@ classdef GenerateContext < handle
                 out{end+1} = [rel_fun_dir, '/', fun_name, '.c'];
             end
         end
+
+        function n_global_data = get_n_global_data(self)
+            n_global_data = length(self.global_data_sym);
+        end
     end
 
     methods (Access = private)
-        function obj = add_function(obj, name, output_dir, fun)
-            obj.list_funname_dir_pairs{end+1} = {name, output_dir};
-            obj.functions_to_generate{end+1} = fun;
+
+        function [] = setup_p_global_precompute_fun(self)
+
+            import casadi.*
+
+            precompute_pairs = {};
+
+            for i = 1:length(self.function_input_output_pairs)
+                outputs = cse(self.function_input_output_pairs{i}{2});
+
+                % detect parametric expressions in p_global
+                [outputs_ret, symbols, param_expr] = extract_parametric(outputs, self.p_global, struct('extract_trivial', true));
+
+                % substitute previously detected param_expr in outputs
+                symbols_to_add = {};
+                param_expr_to_add = {};
+                for jj = 1:length(symbols)
+                    add = true;
+                    sym_new = symbols{jj};
+                    expr_new = param_expr{jj};
+                    for k = 1:length(precompute_pairs)
+                        sym = precompute_pairs{k}{1};
+                        expr = precompute_pairs{k}{2};
+                        if is_equal(expr, expr_new)
+                            for kkk = 1:length(outputs_ret)
+                                outputs_ret{kkk} = substitute(outputs_ret{kkk}, sym_new, sym);
+                            end
+                            add = false;
+                            break
+                        end
+                    end
+                    if add
+                        symbols_to_add{end+1} = sym_new;
+                        param_expr_to_add{end+1} = expr_new;
+                    end
+                end
+
+
+                % Update output expressions with the ones that use the extracted expressions
+                self.function_input_output_pairs{i}{2} = outputs_ret;
+
+                % Store the new input symbols and extracted expressions
+                for j = 1:length(symbols_to_add)
+                    precompute_pairs{end+1} = {symbols_to_add{j}, param_expr_to_add{j}};
+                end
+            end
+
+            % Concatenate global data symbols and expressions
+            global_data_sym_list = cellfun(@(pair) pair{1}, precompute_pairs, 'UniformOutput', false);
+            self.global_data_sym = vertcat(global_data_sym_list{:});
+
+            global_data_expr_list = cellfun(@(pair) pair{2}, precompute_pairs, 'UniformOutput', false);
+            self.global_data_expr = cse(vertcat(global_data_expr_list{:}));
+
+            % Assert length match
+            assert(length(self.global_data_expr) == length(self.global_data_sym), ...
+                   sprintf('Length mismatch: %d != %d', length(self.global_data_expr), length(self.global_data_sym)));
+
+            if length(self.global_data_expr) == 0
+                error("The model contains global parameters, but no CasADi function depends on them. This is currently not supported. Please remove p_global from the model definition.")
+            end
+
+            % Add global data as input to all functions
+            for i = 1:length(self.function_input_output_pairs)
+                self.function_input_output_pairs{i}{1}{end+1} = self.global_data_sym;
+            end
+
+            % Define output directory and function name
+            output_dir = fullfile(pwd, self.opts.code_export_directory);
+            fun_name = sprintf('%s_p_global_precompute_fun', self.problem_name);
+
+            % Add function definition
+            self.add_function_definition(fun_name, {self.p_global}, {self.global_data_expr}, output_dir);
+
         end
 
-        function obj = generate_functions(obj)
+
+        function [] = generate_functions(obj)
+            import casadi.*
 
             for i = 1:numel(obj.list_funname_dir_pairs)
                 name = obj.list_funname_dir_pairs{i}{1};
                 output_dir = obj.list_funname_dir_pairs{i}{2};
-                fun = obj.functions_to_generate{i};
+                inputs = obj.function_input_output_pairs{i}{1};
+                outputs = obj.function_input_output_pairs{i}{2};
+
+                % fprintf('Generating function %s in directory %s\n', name, output_dir);
+                % disp('Inputs:');
+                % disp(inputs);
+                % disp('Outputs:');
+                % disp(outputs);
+                try
+                    fun = Function(name, inputs, outputs, obj.casadi_fun_opts);
+                catch e
+                    fprintf('Error while setting up casadi function %s\n', name);
+                    rethrow(e);
+                end
+
+                if ~strcmp(name, sprintf('%s_p_global_precompute_fun', obj.problem_name))
+                    if obj.opts.ext_fun_expand
+                        try
+                            fun = fun.expand();
+                        catch
+                            warning(['Failed to expand the CasADi function ' name '.'])
+                        end
+                    end
+                end
 
                 % setup and change directory
                 cwd = pwd;
@@ -195,7 +272,7 @@ function check_casadi_version_supports_p_global()
     try
         dummy = MX.sym('dummy');
         % Check if the required functions exist in CasADi
-        extract_parametric(dummy, dummy);  % Check if extract_parametric exists
+        extract_parametric(dummy, dummy, struct('extract_trivial', true));  % Check if extract_parametric exists
         cse(dummy); % Check if cse exists
         blazing_spline('blazing_spline', {[1, 2, 3], [1, 2, 3]});
     catch

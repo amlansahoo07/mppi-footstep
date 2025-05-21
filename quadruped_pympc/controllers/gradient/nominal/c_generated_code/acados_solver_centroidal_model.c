@@ -276,6 +276,9 @@ static ocp_nlp_dims* centroidal_model_acados_create_setup_dimensions(centroidal_
     ocp_nlp_dims_set_opt_vars(nlp_config, nlp_dims, "ns", ns);
     ocp_nlp_dims_set_opt_vars(nlp_config, nlp_dims, "np", np);
 
+    ocp_nlp_dims_set_global(nlp_config, nlp_dims, "np_global", 0);
+    ocp_nlp_dims_set_global(nlp_config, nlp_dims, "n_global_data", 0);
+
     for (int i = 0; i <= N; i++)
     {
         ocp_nlp_dims_set_constraints(nlp_config, nlp_dims, i, "nbx", &nbx[i]);
@@ -325,10 +328,14 @@ void centroidal_model_acados_create_setup_functions(centroidal_model_solver_caps
         capsule->__CAPSULE_FNC__.casadi_sparsity_in = & __MODEL_BASE_FNC__ ## _sparsity_in; \
         capsule->__CAPSULE_FNC__.casadi_sparsity_out = & __MODEL_BASE_FNC__ ## _sparsity_out; \
         capsule->__CAPSULE_FNC__.casadi_work = & __MODEL_BASE_FNC__ ## _work; \
-        external_function_external_param_casadi_create(&capsule->__CAPSULE_FNC__ ); \
+        external_function_external_param_casadi_create(&capsule->__CAPSULE_FNC__, &ext_fun_opts); \
     } while(false)
 
+    external_function_opts ext_fun_opts;
+    external_function_opts_set_to_default(&ext_fun_opts);
 
+
+    ext_fun_opts.external_workspace = true;
     MAP_CASADI_FNC(nl_constr_h_0_fun_jac, centroidal_model_constr_h_0_fun_jac_uxt_zt);
     MAP_CASADI_FNC(nl_constr_h_0_fun, centroidal_model_constr_h_0_fun);
     // constraints.constr_type == "BGH" and dims.nh > 0
@@ -340,7 +347,6 @@ void centroidal_model_acados_create_setup_functions(centroidal_model_solver_caps
     for (int i = 0; i < N-1; i++) {
         MAP_CASADI_FNC(nl_constr_h_fun[i], centroidal_model_constr_h_fun);
     }
-    
 
 
 
@@ -371,7 +377,9 @@ void centroidal_model_acados_create_setup_functions(centroidal_model_solver_caps
 /**
  * Internal function for centroidal_model_acados_create: step 4
  */
-void centroidal_model_acados_create_set_default_parameters(centroidal_model_solver_capsule* capsule) {
+void centroidal_model_acados_create_set_default_parameters(centroidal_model_solver_capsule* capsule)
+{
+
     const int N = capsule->nlp_solver_plan->N;
     // initialize parameters to nominal value
     double* p = calloc(NP, sizeof(double));
@@ -395,6 +403,8 @@ void centroidal_model_acados_create_set_default_parameters(centroidal_model_solv
         centroidal_model_acados_update_params(capsule, i, p, NP);
     }
     free(p);
+
+
     // no global parameters defined
 }
 
@@ -417,20 +427,43 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
 //    capsule->nlp_in = nlp_in;
     ocp_nlp_in * nlp_in = capsule->nlp_in;
 
-    // set up time_steps
+    // set up time_steps and cost_scaling
 
     if (new_time_steps)
     {
+        // NOTE: this sets scaling and time_steps
         centroidal_model_acados_update_time_steps(capsule, N, new_time_steps);
     }
     else
-    {double time_step = 0.02;
+    {
+        // set time_steps
+    double time_step = 0.02;
         for (int i = 0; i < N; i++)
         {
             ocp_nlp_in_set(nlp_config, nlp_dims, nlp_in, i, "Ts", &time_step);
-            ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &time_step);
         }
+        // set cost scaling
+        double* cost_scaling = malloc((N+1)*sizeof(double));
+        cost_scaling[0] = 0.02;
+        cost_scaling[1] = 0.02;
+        cost_scaling[2] = 0.02;
+        cost_scaling[3] = 0.02;
+        cost_scaling[4] = 0.02;
+        cost_scaling[5] = 0.02;
+        cost_scaling[6] = 0.02;
+        cost_scaling[7] = 0.02;
+        cost_scaling[8] = 0.02;
+        cost_scaling[9] = 0.02;
+        cost_scaling[10] = 0.02;
+        cost_scaling[11] = 0.02;
+        cost_scaling[12] = 1;
+        for (int i = 0; i <= N; i++)
+        {
+            ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &cost_scaling[i]);
+        }
+        free(cost_scaling);
     }
+
 
     /**** Dynamics ****/
     for (int i = 0; i < N; i++)
@@ -671,7 +704,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     
     double* Vu = calloc(NY*NU, sizeof(double));
     // change only the non-zero elements:
-    
     Vu[30+(NY) * 0] = 1;
     Vu[31+(NY) * 1] = 1;
     Vu[32+(NY) * 2] = 1;
@@ -740,7 +772,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     free(W_e);
     double* Vx_e = calloc(NYN*NX, sizeof(double));
     // change only the non-zero elements:
-    
     Vx_e[0+(NYN) * 0] = 1;
     Vx_e[1+(NYN) * 1] = 1;
     Vx_e[2+(NYN) * 2] = 1;
@@ -827,7 +858,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     free(lubx0);
     // idxbxe_0
     int* idxbxe_0 = malloc(30 * sizeof(int));
-    
     idxbxe_0[0] = 0;
     idxbxe_0[1] = 1;
     idxbxe_0[2] = 2;
@@ -867,7 +897,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     double* luh_0 = calloc(2*NH0, sizeof(double));
     double* lh_0 = luh_0;
     double* uh_0 = luh_0 + NH0;
-    
     lh_0[0] = -1000;
     lh_0[1] = -1000;
     lh_0[5] = -1000;
@@ -876,8 +905,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     lh_0[11] = -1000;
     lh_0[15] = -1000;
     lh_0[16] = -1000;
-
-    
     uh_0[2] = 1000;
     uh_0[3] = 1000;
     uh_0[4] = 241.68897;
@@ -893,6 +920,8 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
 
     ocp_nlp_constraints_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "nl_constr_h_fun_jac", &capsule->nl_constr_h_0_fun_jac);
     ocp_nlp_constraints_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, 0, "nl_constr_h_fun", &capsule->nl_constr_h_0_fun);
+    
+    
     
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "lh", lh_0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "uh", uh_0);
@@ -919,8 +948,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     double* luh = calloc(2*NH, sizeof(double));
     double* lh = luh;
     double* uh = luh + NH;
-
-    
     lh[0] = -1000;
     lh[1] = -1000;
     lh[5] = -1000;
@@ -929,8 +956,6 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
     lh[11] = -1000;
     lh[15] = -1000;
     lh[16] = -1000;
-
-    
     uh[2] = 1000;
     uh[3] = 1000;
     uh[4] = 241.68897;
@@ -950,6 +975,8 @@ void centroidal_model_acados_setup_nlp_in(centroidal_model_solver_capsule* capsu
                                       &capsule->nl_constr_h_fun_jac[i-1]);
         ocp_nlp_constraints_model_set_external_param_fun(nlp_config, nlp_dims, nlp_in, i, "nl_constr_h_fun",
                                       &capsule->nl_constr_h_fun[i-1]);
+        
+        
         
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lh", lh);
         ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "uh", uh);
@@ -985,12 +1012,18 @@ static void centroidal_model_acados_create_set_opts(centroidal_model_solver_caps
     *  opts
     ************************************************/
 
-int fixed_hess = 0;
+
+
+    int fixed_hess = 0;
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "fixed_hess", &fixed_hess);
 
     double globalization_fixed_step_length = 1;
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "globalization_fixed_step_length", &globalization_fixed_step_length);
-int with_solution_sens_wrt_params = false;
+
+
+
+
+    int with_solution_sens_wrt_params = false;
     ocp_nlp_solver_opts_set(nlp_config, capsule->nlp_opts, "with_solution_sens_wrt_params", &with_solution_sens_wrt_params);
 
     int with_value_sens_wrt_params = false;
@@ -1019,6 +1052,10 @@ int with_solution_sens_wrt_params = false;
     int newton_iter_val = 3;
     for (int i = 0; i < N; i++)
         ocp_nlp_solver_opts_set_at_stage(nlp_config, nlp_opts, i, "dynamics_newton_iter", &newton_iter_val);
+
+    double newton_tol_val = 0;
+    for (int i = 0; i < N; i++)
+        ocp_nlp_solver_opts_set_at_stage(nlp_config, nlp_opts, i, "dynamics_newton_tol", &newton_tol_val);
 
     // set up sim_method_jac_reuse
     bool tmp_bool = (bool) 0;
@@ -1114,7 +1151,6 @@ void centroidal_model_acados_set_nlp_out(centroidal_model_solver_capsule* capsul
     double* x0 = xu0;
 
     // initialize with x0
-    
 
 
     double* u0 = xu0 + NX;
@@ -1130,14 +1166,6 @@ void centroidal_model_acados_set_nlp_out(centroidal_model_solver_capsule* capsul
     free(xu0);
 }
 
-
-/**
- * Internal function for centroidal_model_acados_create: step 8
- */
-//void centroidal_model_acados_create_8_create_solver(centroidal_model_solver_capsule* capsule)
-//{
-//    capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts);
-//}
 
 /**
  * Internal function for centroidal_model_acados_create: step 9
@@ -1189,7 +1217,7 @@ int centroidal_model_acados_create_with_discretization(centroidal_model_solver_c
     centroidal_model_acados_create_set_default_parameters(capsule);
 
     // 6) create solver
-    capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts);
+    capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
 
     // 7) create and set nlp_out
     // 7.1) nlp_out
@@ -1220,7 +1248,7 @@ int centroidal_model_acados_update_qp_solver_cond_N(centroidal_model_solver_caps
 
     // 3) continue with the remaining steps from centroidal_model_acados_create_with_discretization(...):
     // -> 8) create solver
-    capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts);
+    capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
 
     // -> 9) do precomputations
     int status = centroidal_model_acados_create_precompute(capsule);
@@ -1257,7 +1285,7 @@ int centroidal_model_acados_reset(centroidal_model_solver_capsule* capsule, int 
     }
     // get qp_status: if NaN -> reset memory
     int qp_status;
-    ocp_nlp_get(capsule->nlp_config, capsule->nlp_solver, "qp_status", &qp_status);
+    ocp_nlp_get(capsule->nlp_solver, "qp_status", &qp_status);
     if (reset_qp_solver_mem || (qp_status == 3))
     {
         // printf("\nin reset qp_status %d -> resetting QP memory\n", qp_status);
@@ -1313,12 +1341,83 @@ int centroidal_model_acados_solve(centroidal_model_solver_capsule* capsule)
 }
 
 
-void centroidal_model_acados_batch_solve(centroidal_model_solver_capsule ** capsules, int N_batch)
+void centroidal_model_acados_batch_solve(centroidal_model_solver_capsule ** capsules, int * status_out, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
     {
-        ocp_nlp_solve(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->nlp_out);
+        status_out[i] = ocp_nlp_solve(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->nlp_out);
+    }
+
+
+    return;
+}
+
+
+void centroidal_model_acados_batch_eval_params_jac(centroidal_model_solver_capsule ** capsules, int N_batch)
+{
+
+    for (int i = 0; i < N_batch; i++)
+    {
+        ocp_nlp_eval_params_jac(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->nlp_out);
+    }
+
+
+    return;
+}
+
+
+
+void centroidal_model_acados_batch_eval_solution_sens_adj_p(centroidal_model_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch)
+{
+
+
+    for (int i = 0; i < N_batch; i++)
+    {
+        ocp_nlp_eval_solution_sens_adj_p(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->sens_out, field, stage, out + i*offset);
+    }
+
+
+    return;
+}
+
+
+void centroidal_model_acados_batch_set_flat(centroidal_model_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+{
+    int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
+
+    if (N_batch*offset != N_data)
+    {
+        printf("batch_set_flat: wrong input dimension, expected %d, got %d\n", N_batch*offset, N_data);
+        exit(1);
+    }
+
+
+    for (int i = 0; i < N_batch; i++)
+    {
+        ocp_nlp_set_all(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->nlp_out, field, data + i * offset);
+    }
+
+
+    return;
+}
+
+
+
+void centroidal_model_acados_batch_get_flat(centroidal_model_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+{
+    int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
+
+    if (N_batch*offset != N_data)
+    {
+        printf("batch_get_flat: wrong input dimension, expected %d, got %d\n", N_batch*offset, N_data);
+        exit(1);
+    }
+
+
+    for (int i = 0; i < N_batch; i++)
+    {
+        ocp_nlp_get_all(capsules[i]->nlp_solver, capsules[i]->nlp_in, capsules[i]->nlp_out, field, data + i * offset);
     }
 
 
@@ -1374,13 +1473,13 @@ int centroidal_model_acados_free(centroidal_model_solver_capsule* capsule)
 void centroidal_model_acados_print_stats(centroidal_model_solver_capsule* capsule)
 {
     int nlp_iter, stat_m, stat_n, tmp_int;
-    ocp_nlp_get(capsule->nlp_config, capsule->nlp_solver, "nlp_iter", &nlp_iter);
-    ocp_nlp_get(capsule->nlp_config, capsule->nlp_solver, "stat_n", &stat_n);
-    ocp_nlp_get(capsule->nlp_config, capsule->nlp_solver, "stat_m", &stat_m);
+    ocp_nlp_get(capsule->nlp_solver, "nlp_iter", &nlp_iter);
+    ocp_nlp_get(capsule->nlp_solver, "stat_n", &stat_n);
+    ocp_nlp_get(capsule->nlp_solver, "stat_m", &stat_m);
 
-    
+
     double stat[12];
-    ocp_nlp_get(capsule->nlp_config, capsule->nlp_solver, "statistics", stat);
+    ocp_nlp_get(capsule->nlp_solver, "statistics", stat);
 
     int nrow = nlp_iter+1 < stat_m ? nlp_iter+1 : stat_m;
 

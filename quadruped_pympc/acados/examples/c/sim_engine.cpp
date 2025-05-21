@@ -33,9 +33,9 @@
 #include <vector>
 // #include <xmmintrin.h>
 
-#include "blasfeo/include/blasfeo_d_aux.h"
-#include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
-#include "blasfeo/include/blasfeo_d_blas.h"
+#include "blasfeo_d_aux.h"
+#include "blasfeo_d_aux_ext_dep.h"
+#include "blasfeo_d_blas.h"
 
 // acados
 #include "acados/sim/sim_common.h"
@@ -163,7 +163,7 @@ int main()
         in->S_adj[ii] = 0.0;
 
     // solver
-    sim_solver *sim_solver = sim_solver_create(config, dims, opts);
+    sim_solver *sim_solver = sim_solver_create(config, dims, opts, in);
 
     acados_timer timer;
     acados_tic(&timer);

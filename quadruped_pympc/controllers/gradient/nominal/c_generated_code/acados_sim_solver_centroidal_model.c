@@ -75,6 +75,10 @@ int centroidal_model_acados_sim_create(centroidal_model_sim_solver_capsule * cap
 
     double Tsim = 0.02;
 
+    external_function_opts ext_fun_opts;
+    external_function_opts_set_to_default(&ext_fun_opts);
+    ext_fun_opts.external_workspace = false;
+
     
     // explicit ode
     capsule->sim_expl_vde_forw = (external_function_param_casadi *) malloc(sizeof(external_function_param_casadi));
@@ -87,7 +91,7 @@ int centroidal_model_acados_sim_create(centroidal_model_sim_solver_capsule * cap
     capsule->sim_expl_vde_forw->casadi_sparsity_in = &centroidal_model_expl_vde_forw_sparsity_in;
     capsule->sim_expl_vde_forw->casadi_sparsity_out = &centroidal_model_expl_vde_forw_sparsity_out;
     capsule->sim_expl_vde_forw->casadi_work = &centroidal_model_expl_vde_forw_work;
-    external_function_param_casadi_create(capsule->sim_expl_vde_forw, np);
+    external_function_param_casadi_create(capsule->sim_expl_vde_forw, np, &ext_fun_opts);
 
     capsule->sim_vde_adj_casadi->casadi_fun = &centroidal_model_expl_vde_adj;
     capsule->sim_vde_adj_casadi->casadi_n_in = &centroidal_model_expl_vde_adj_n_in;
@@ -95,7 +99,7 @@ int centroidal_model_acados_sim_create(centroidal_model_sim_solver_capsule * cap
     capsule->sim_vde_adj_casadi->casadi_sparsity_in = &centroidal_model_expl_vde_adj_sparsity_in;
     capsule->sim_vde_adj_casadi->casadi_sparsity_out = &centroidal_model_expl_vde_adj_sparsity_out;
     capsule->sim_vde_adj_casadi->casadi_work = &centroidal_model_expl_vde_adj_work;
-    external_function_param_casadi_create(capsule->sim_vde_adj_casadi, np);
+    external_function_param_casadi_create(capsule->sim_vde_adj_casadi, np, &ext_fun_opts);
 
     capsule->sim_expl_ode_fun_casadi->casadi_fun = &centroidal_model_expl_ode_fun;
     capsule->sim_expl_ode_fun_casadi->casadi_n_in = &centroidal_model_expl_ode_fun_n_in;
@@ -103,7 +107,7 @@ int centroidal_model_acados_sim_create(centroidal_model_sim_solver_capsule * cap
     capsule->sim_expl_ode_fun_casadi->casadi_sparsity_in = &centroidal_model_expl_ode_fun_sparsity_in;
     capsule->sim_expl_ode_fun_casadi->casadi_sparsity_out = &centroidal_model_expl_ode_fun_sparsity_out;
     capsule->sim_expl_ode_fun_casadi->casadi_work = &centroidal_model_expl_ode_fun_work;
-    external_function_param_casadi_create(capsule->sim_expl_ode_fun_casadi, np);
+    external_function_param_casadi_create(capsule->sim_expl_ode_fun_casadi, np, &ext_fun_opts);
 
     
 
@@ -161,7 +165,7 @@ int centroidal_model_acados_sim_create(centroidal_model_sim_solver_capsule * cap
 
     // sim solver
     sim_solver *centroidal_model_sim_solver = sim_solver_create(centroidal_model_sim_config,
-                                               centroidal_model_sim_dims, centroidal_model_sim_opts);
+                                               centroidal_model_sim_dims, centroidal_model_sim_opts, centroidal_model_sim_in);
     capsule->acados_sim_solver = centroidal_model_sim_solver;
 
 

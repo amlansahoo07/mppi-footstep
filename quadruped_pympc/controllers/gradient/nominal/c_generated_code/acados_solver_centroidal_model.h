@@ -118,8 +118,12 @@ typedef struct centroidal_model_solver_capsule
 
 
 
+
+
     external_function_external_param_casadi nl_constr_h_0_fun_jac;
     external_function_external_param_casadi nl_constr_h_0_fun;
+
+
 
 
 
@@ -153,7 +157,16 @@ ACADOS_SYMBOL_EXPORT int centroidal_model_acados_update_params_sparse(centroidal
 ACADOS_SYMBOL_EXPORT int centroidal_model_acados_set_p_global_and_precompute_dependencies(centroidal_model_solver_capsule* capsule, double* data, int data_len);
 
 ACADOS_SYMBOL_EXPORT int centroidal_model_acados_solve(centroidal_model_solver_capsule * capsule);
-ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_solve(centroidal_model_solver_capsule ** capsules, int N_batch);
+
+ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_solve(centroidal_model_solver_capsule ** capsules, int * status_out, int N_batch);
+
+ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_set_flat(centroidal_model_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch);
+ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_get_flat(centroidal_model_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch);
+
+ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_eval_solution_sens_adj_p(centroidal_model_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch);
+ACADOS_SYMBOL_EXPORT void centroidal_model_acados_batch_eval_params_jac(centroidal_model_solver_capsule ** capsules, int N_batch);
+
+
 ACADOS_SYMBOL_EXPORT int centroidal_model_acados_free(centroidal_model_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT void centroidal_model_acados_print_stats(centroidal_model_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT int centroidal_model_acados_custom_update(centroidal_model_solver_capsule* capsule, double* data, int data_len);

@@ -42,7 +42,7 @@ extern "C" {
 #endif
 
 // blasfeo
-#include "blasfeo/include/blasfeo_common.h"
+#include "blasfeo_common.h"
 
 // acados
 #include "acados/ocp_nlp/ocp_nlp_globalization_common.h"
@@ -72,6 +72,7 @@ void ocp_nlp_globalization_fixed_step_opts_set(void *config, void *opts, const c
  ************************************************/
 typedef struct
 {
+    double alpha;  // dummy value, not used, just to have non-empty struct
 } ocp_nlp_globalization_fixed_step_memory;
 
 //

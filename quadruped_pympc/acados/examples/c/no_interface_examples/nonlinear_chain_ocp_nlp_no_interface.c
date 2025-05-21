@@ -33,8 +33,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
-#include "blasfeo/include/blasfeo_i_aux_ext_dep.h"
+#include "blasfeo_d_aux_ext_dep.h"
+#include "blasfeo_i_aux_ext_dep.h"
 
 #include "acados/dense_qp/dense_qp_hpipm.h"
 #include "acados/ocp_qp/ocp_qp_common.h"
@@ -1283,11 +1283,13 @@ int main() {
     }
 #endif
 
-	// constraitns
+	// constraints
     for (int ii = 0; ii <= NN; ii++)
     {
 		ocp_nlp_constraints_bgh_config_initialize_default(config->constraints[ii], ii);
     }
+
+	ocp_nlp_globalization_fixed_step_config_initialize_default(config->globalization);
 
     /************************************************
     * ocp_nlp_dims
@@ -1931,16 +1933,16 @@ int main() {
     * sqp memory
     ************************************************/
 
-	tmp_size = ocp_nlp_sqp_memory_calculate_size(config, dims, nlp_opts);
+	tmp_size = ocp_nlp_sqp_memory_calculate_size(config, dims, nlp_opts, nlp_in);
 	void *nlp_mem_mem = malloc(tmp_size);
-	ocp_nlp_sqp_memory *nlp_mem = ocp_nlp_sqp_memory_assign(config, dims, nlp_opts, nlp_mem_mem);
+	ocp_nlp_sqp_memory *nlp_mem = ocp_nlp_sqp_memory_assign(config, dims, nlp_opts, nlp_in, nlp_mem_mem);
 
 
     /************************************************
     * sqp workspace
     ************************************************/
 
-    int workspace_size = ocp_nlp_sqp_workspace_calculate_size(config, dims, nlp_opts);
+    int workspace_size = ocp_nlp_sqp_workspace_calculate_size(config, dims, nlp_opts, nlp_in);
     void *nlp_work = acados_malloc(workspace_size, 1);
 
     /************************************************

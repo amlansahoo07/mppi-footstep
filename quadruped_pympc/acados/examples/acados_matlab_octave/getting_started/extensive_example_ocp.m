@@ -166,9 +166,9 @@ if strcmp(cost_type, 'LINEAR_LS')
     ocp.cost.W_e = W_x;
     ocp.cost.yref_e = y_ref_e;
 else % EXTERNAL, AUTO
-    ocp.cost.cost_expr_ext_cost_0 = cost_expr_ext_cost_0;
-    ocp.cost.cost_expr_ext_cost = cost_expr_ext_cost;
-    ocp.cost.cost_expr_ext_cost_e = cost_expr_ext_cost_e;
+    ocp.model.cost_expr_ext_cost_0 = cost_expr_ext_cost_0;
+    ocp.model.cost_expr_ext_cost = cost_expr_ext_cost;
+    ocp.model.cost_expr_ext_cost_e = cost_expr_ext_cost_e;
 end
 
 %% CONSTRAINTS
@@ -184,7 +184,7 @@ if constraint_formulation_nonlinear % formulate constraint via h
     model.con_h_expr_0 = model.u;
     ocp.constraints.lh_0 = lbu;
     ocp.constraints.uh_0 = ubu;
-    ocp.constraints.con_h_expr = model.u;
+    ocp.model.con_h_expr = model.u;
     ocp.constraints.lh = lbu;
     ocp.constraints.uh = ubu;
 else % formulate constraint as bound on u
@@ -259,7 +259,7 @@ cost_val_ocp = ocp_solver.get_cost();
 %        |----- dynamics -----|------ cost --------|---------------------------- constraints ------------------------|
 fields = {'qp_A','qp_B','qp_b','qp_R','qp_Q','qp_r','qp_C','qp_D','qp_lg','qp_ug','qp_lbx','qp_ubx','qp_lbu','qp_ubu'};
 
-% eiter stage-wise ...
+% either stage-wise ...
 for stage = [0,N-1]
     for k = 1:length(fields)
         field = fields{k};
@@ -272,9 +272,6 @@ stage = N;
 field = 'qp_Q';
 disp(strcat(field, " at stage ", num2str(stage), " = "));
 ocp_solver.get(field, stage)
-field = 'qp_R';
-disp(strcat(field, " at stage ", num2str(stage), " = "));
-ocp_solver.get(field, stage)
 
 ... or for all stages.
 qp_Q = ocp_solver.get('qp_Q');
@@ -282,18 +279,18 @@ cond_H = ocp_solver.get('qp_solver_cond_H');
 
 disp('QP diagnostics of last QP before condensing')
 result = ocp_solver.qp_diagnostics(false);
-disp(['min eigenvalues of blocks are in [', num2str(min(result.min_ev)), ', ', num2str(max(result.min_ev)), ']'])
-disp(['max eigenvalues of blocks are in [', num2str(min(result.max_ev)), ', ', num2str(max(result.max_ev)), ']'])
-disp(['condition_number_blockwise: '])
-disp(result.condition_number_blockwise)
+disp(['min eigenvalues of blocks are in [', num2str(min(result.min_eigv_stage)), ', ', num2str(max(result.min_eigv_stage)), ']'])
+disp(['max eigenvalues of blocks are in [', num2str(min(result.max_eigv_stage)), ', ', num2str(max(result.max_eigv_stage)), ']'])
+disp(['condition_number_stage: '])
+disp(result.condition_number_stage)
 disp(['condition_number_global: ', num2str(result.condition_number_global)])
 
 disp('QP diagnostics of last QP after partial condensing')
 result = ocp_solver.qp_diagnostics(true);
-disp(['min eigenvalues of blocks are in [', num2str(min(result.min_ev)), ', ', num2str(max(result.min_ev)), ']'])
-disp(['max eigenvalues of blocks are in [', num2str(min(result.max_ev)), ', ', num2str(max(result.max_ev)), ']'])
-disp(['condition_number_blockwise: '])
-disp(result.condition_number_blockwise)
+disp(['min eigenvalues of blocks are in [', num2str(min(result.min_eigv_stage)), ', ', num2str(max(result.min_eigv_stage)), ']'])
+disp(['max eigenvalues of blocks are in [', num2str(min(result.max_eigv_stage)), ', ', num2str(max(result.max_eigv_stage)), ']'])
+disp(['condition_number_stage: '])
+disp(result.condition_number_stage)
 disp(['condition_number_global: ', num2str(result.condition_number_global)])
 
 % get second SQP iterate

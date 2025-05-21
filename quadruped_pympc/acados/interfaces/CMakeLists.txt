@@ -156,6 +156,9 @@ if(ACADOS_PYTHON)
     add_test(NAME python_test_ocp
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/tests
         python main_test.py)
+    add_test(NAME python_test_detect_constraints
+        COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/tests
+        python test_detect_constraints.py)
 
     add_test(NAME python_test_cost_integration_euler
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/tests
@@ -169,17 +172,17 @@ if(ACADOS_PYTHON)
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/ocp
         python minimal_example_ocp_reuse_code.py)
 
-    add_test(NAME python_solution_sensitivities_and_exact_hess
-        COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
-        python test_solution_sens_and_exact_hess.py)
+    # add_test(NAME python_solution_sensitivities_and_exact_hess
+    #     COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
+    #     python test_solution_sens_and_exact_hess.py)
 
-    add_test(NAME python_value_function_gradient
-        COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
-        python value_gradient_example.py)
+    # add_test(NAME python_value_function_gradient
+    #     COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
+    #     python value_gradient_example.py)
 
-    add_test(NAME python_policy_gradient
-        COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
-        python policy_gradient_example.py)
+    # add_test(NAME python_policy_gradient
+    #     COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/solution_sensitivities
+    #     python policy_gradient_example.py)
 
     add_test(NAME python_time_varying_irk
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/time_varying
@@ -319,6 +322,10 @@ add_test(NAME python_pendulum_ocp_example_cmake
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/zoRO_example
         python diff_drive/main.py)
 
+    add_test(NAME python_convex_ocp_with_onesided_constraints
+        COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/convex_ocp_with_onesided_constraints
+        python main_convex_onesided.py)
+
     # Sim
     add_test(NAME python_pendulum_sim_example_cmake
         COMMAND "${CMAKE_COMMAND}" -E chdir ${PROJECT_SOURCE_DIR}/examples/acados_python/pendulum_on_cart/sim
@@ -409,9 +416,10 @@ add_test(NAME python_pendulum_ocp_example_cmake
     set_tests_properties(python_test_nan_globalization PROPERTIES DEPENDS python_regularization_test)
     set_tests_properties(python_regularization_test PROPERTIES DEPENDS python_test_sim_dae)
     set_tests_properties(python_test_sim_dae PROPERTIES DEPENDS python_sparse_param_test)
+    set_tests_properties(python_sparse_param_test PROPERTIES DEPENDS python_test_detect_constraints)
 
     if(ACADOS_WITH_OSQP)
-        set_tests_properties(python_sparse_param_test PROPERTIES DEPENDS python_OSQP_test)
+        set_tests_properties(python_test_detect_constraints PROPERTIES DEPENDS python_OSQP_test)
     endif()
 
     # Directory acados_python/chain_mass
@@ -425,9 +433,9 @@ add_test(NAME python_pendulum_ocp_example_cmake
     set_tests_properties(python_pendulum_mhe_example_noisy_param PROPERTIES DEPENDS python_pendulum_mhe_example_param)
     set_tests_properties(python_pendulum_mhe_example_param PROPERTIES DEPENDS python_pendulum_mhe_ocp_closed_loop_example)
 
-    # Directory  pendulum_on_cart/solution_sensitivities
-    set_tests_properties(python_solution_sensitivities_and_exact_hess PROPERTIES DEPENDS python_value_function_gradient)
-    set_tests_properties(python_value_function_gradient PROPERTIES DEPENDS python_policy_gradient)
+    # # Directory  pendulum_on_cart/solution_sensitivities
+    # set_tests_properties(python_solution_sensitivities_and_exact_hess PROPERTIES DEPENDS python_value_function_gradient)
+    # set_tests_properties(python_value_function_gradient PROPERTIES DEPENDS python_policy_gradient)
 
     # Directory time_varying
     set_tests_properties(python_time_varying_irk PROPERTIES DEPENDS test_polynomial_controls_and_penalties)

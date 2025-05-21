@@ -7,12 +7,13 @@ from quadruped_pympc.helpers.quadruped_utils import GaitType
 # These are used both for a real experiment and a simulation -----------
 # These are the only attributes needed per quadruped, the rest can be computed automatically ----------------------
 robot = 'aliengo'  # 'go1', 'go2', 'b2', 'aliengo', 'hyqreal', 'mini_cheetah'  # TODO: Load from robot_descriptions.py
-robot_leg_joints = dict(FL=['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',],  # TODO: Make configs per robot.
-                        FR=['FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint',],
-                        RL=['RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint',],
-                        RR=['RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint',])
-robot_feet_geom_names = dict(FL='FL', FR='FR', RL='RL', RR='RR')
-qpos0_js = None  # Zero joint-space configuration. If None it will be extracted from the URDF.
+
+from gym_quadruped.robot_cfgs import RobotConfig, get_robot_config
+robot_cfg: RobotConfig = get_robot_config(robot_name=robot)
+robot_leg_joints = robot_cfg.leg_joints
+robot_feet_geom_names = robot_cfg.feet_geom_names
+qpos0_js = robot_cfg.qpos0_js
+hip_height = robot_cfg.hip_height
 
 # ----------------------------------------------------------------------------------------------------------------
 if (robot == 'go1'):
@@ -20,17 +21,12 @@ if (robot == 'go1'):
     inertia = np.array([[1.58460467e-01, 1.21660000e-04, -1.55444692e-02],
                         [1.21660000e-04, 4.68645637e-01, -3.12000000e-05],
                         [-1.55444692e-02, -3.12000000e-05, 5.24474661e-01]])
-    urdf_filename = "go1.urdf"
-    hip_height = 0.3
 
 elif (robot == 'go2'):
     mass = 15.019
     inertia = np.array([[1.58460467e-01, 1.21660000e-04, -1.55444692e-02],
                         [1.21660000e-04, 4.68645637e-01, -3.12000000e-05],
                         [-1.55444692e-02, -3.12000000e-05, 5.24474661e-01]])
-    urdf_filename = "go2.urdf"
-    hip_height = 0.28
-
 
 elif (robot == 'aliengo'):
     mass = 24.637
@@ -38,37 +34,24 @@ elif (robot == 'aliengo'):
                         [-0.0014987128245817424, 1.4485084687476608, 0.0004641447134275615],
                         [-0.021400468992761768, 0.0004641447134275615, 1.503217877350808]])
 
-    urdf_filename = "aliengo.urdf"
-    hip_height = 0.35
-
 elif (robot == 'b2'):
     mass = 83.49
     inertia = np.array([[0.2310941359705289, -0.0014987128245817424, -0.021400468992761768],
                         [-0.0014987128245817424, 1.4485084687476608, 0.0004641447134275615],
                         [-0.021400468992761768, 0.0004641447134275615, 1.503217877350808]])
 
-    urdf_filename = "b2.urdf"
-    hip_height = 0.485
 
 elif (robot == 'hyqreal'):
     mass = 108.40
     inertia = np.array([[4.55031444e+00, 2.75249434e-03, -5.11957307e-01],
                         [2.75249434e-03, 2.02411774e+01, -7.38560592e-04],
                         [-5.11957307e-01, -7.38560592e-04, 2.14269772e+01]])
-    urdf_filename = "hyqreal.urdf"
-    robot_leg_joints = dict(FL=['lf_haa_joint', 'lf_hfe_joint', 'lf_kfe_joint',],
-                            FR=['rf_haa_joint', 'rf_hfe_joint', 'rf_kfe_joint',],
-                            RL=['lh_haa_joint', 'lh_hfe_joint', 'lh_kfe_joint',],
-                            RR=['rh_haa_joint', 'rh_hfe_joint', 'rh_kfe_joint',])
-    hip_height = 0.5
+    
 elif (robot == 'mini_cheetah'):
     mass = 12.5
     inertia = np.array([[1.58460467e-01, 1.21660000e-04, -1.55444692e-02],
                         [1.21660000e-04, 4.68645637e-01, -3.12000000e-05],
                         [-1.55444692e-02, -3.12000000e-05, 5.24474661e-01]])
-    urdf_filename = "mini_cheetah.urdf"
-    hip_height = 0.225
-    qpos0_js = np.concatenate((np.array([0, -np.pi/2, 0] * 2), np.array([0, np.pi/2, 0] * 2)))
 
 mpc_params = {
     # 'nominal' optimized directly the GRF
@@ -76,11 +59,11 @@ mpc_params = {
     # 'sampling' is a gpu-based mpc that samples the GRF
     # 'collaborative' optimized directly the GRF and has a passive arm model inside
     # 'lyapunov' optimized directly the GRF and has a Lyapunov-based stability constraint
-    # 'kynodynamic' sbrd with joints - experimental
-    'type':                                    'sampling',
+    # 'kinodynamic' sbrd with joints - experimental
+    'type':                                    'sampling',  # 'nominal', 'input_rates', 'sampling', 'collaborative', 'lyapunov', 'kinodynamic'
 
     # print the mpc info
-    'verbose':                                 True,
+    'verbose':                                 False,
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
@@ -177,10 +160,11 @@ mpc_params = {
 
     # this is used only in the case 'sampling'.
     'sampling_method':                         'mppi',  # 'random_sampling', 'mppi', 'cem_mppi'
-    'control_parametrization':                 'cubic_spline_1',
-    # 'cubic_spline_1', 'cubic_spline_2', 'linear_spline_1', 'linear_spline_2', 'zero_order'
+    'control_parametrization':                 'cubic_spline', # 'cubic_spline', 'linear_spline', 'zero_order'
+    'num_splines':                             2,  # number of splines to use for the control parametrization
     'num_parallel_computations':               10000,  # More is better, but slower computation!
     'num_sampling_iterations':                 1,  # More is better, but slower computation!
+    'device':                                  'gpu',  # 'gpu', 'cpu'
     # convariances for the sampling methods
     'sigma_cem_mppi':                          3,
     'sigma_mppi':                              3,
@@ -188,22 +172,16 @@ mpc_params = {
     'shift_solution':                          False,
 
     # ----- END properties for the sampling-based mpc -----
-
-    'use_random_gait': True,  # Set to True to use random gait optimization
-    'num_gait_samples': 20,    # Number of contact sequences to try
-    'gait_stability_weight': 1.0,  # Weight for stability cost term
-    'min_support_legs': 2,     # Minimum legs required in stance
-
     }
 # -----------------------------------------------------------------------
 
 simulation_params = {
-    'swing_generator':             'scipy',  # 'scipy', 'explicit', 'ndcurves'
-    'swing_position_gain_fb':      5000,
-    'swing_velocity_gain_fb':      100,
-    'swing_integral_gain_fb':      0,
-    'impedence_joint_position_gain':  5,
-    'impedence_joint_velocity_gain':  0.1,
+    'swing_generator':             'scipy',  # 'scipy', 'explicit'
+    'swing_position_gain_fb':      500,
+    'swing_velocity_gain_fb':      10,
+    'impedence_joint_position_gain':  10.0,
+    'impedence_joint_velocity_gain':  1.0,
+
     'step_height':                 0.3 * hip_height,  
 
     # Visual Foothold adapatation
@@ -220,6 +198,11 @@ simulation_params = {
                                     'full_stance': {'step_freq': 2, 'duty_factor': 0.65, 'type': GaitType.FULL_STANCE.value},
                                    },
 
+    # This is used to activate or deactivate the reflexes upon contact detection
+    'reflex_trigger_mode':       'tracking', # 'tracking', 'geom_contact', False
+    'reflex_height_enhancement': False,
+    'velocity_modulator': True,
+
     # velocity mode: human will give you the possibility to use the keyboard, the other are
     # forward only random linear-velocity, random will give you random linear-velocity and yaw-velocity
     'mode':                        'human',  # 'human', 'forward', 'random'
@@ -232,7 +215,7 @@ simulation_params = {
 
     'use_inertia_recomputation':   True,
 
-    'scene':                       'flat',  # flat, rough, stairs, random_boxes, random_pyramids, suspend_stairs, slope, perlin, image
+    'scene':                       'flat',  # flat, random_boxes, random_pyramids, perlin
 
     }
 # -----------------------------------------------------------------------

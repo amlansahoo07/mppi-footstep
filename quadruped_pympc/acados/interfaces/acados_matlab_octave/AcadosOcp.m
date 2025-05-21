@@ -48,7 +48,6 @@ classdef AcadosOcp < handle
         shared_lib_ext
         name
         zoro_description
-        casadi_pool_names
         external_function_files_ocp
         external_function_files_model
     end
@@ -265,6 +264,9 @@ classdef AcadosOcp < handle
                 if nbx_0 ~= length(constraints.ubx_0) || nbx_0 ~= length(constraints.idxbx_0)
                     error('inconsistent dimension nbx_0, regarding idxbx_0, lbx_0, ubx_0.');
                 end
+                if min(constraints.idxbx_0) < 0 || max(constraints.idxbx_0) > (dims.nx-1)
+                    error(['idxbx_0 should contain (zero-based) indices between 0 and ', num2str(dims.nx-1)])
+                end
             elseif ~isempty(constraints.idxbx_0) || ~isempty(constraints.lbx_0) || ~isempty(constraints.ubx_0)
                 error('setting bounds on x: need idxbx_0, lbx_0, ubx_0, at least one missing.');
             else
@@ -282,6 +284,9 @@ classdef AcadosOcp < handle
                 if nbx ~= length(constraints.ubx) || nbx ~= length(constraints.idxbx)
                     error('inconsistent dimension nbx, regarding idxbx, lbx, ubx.');
                 end
+                if min(constraints.idxbx) < 0 || max(constraints.idxbx) > (dims.nx-1)
+                    error(['idxbx should contain (zero-based) indices between 0 and ', num2str(dims.nx-1)])
+                end
             elseif ~isempty(constraints.idxbx) || ~isempty(constraints.lbx) || ~isempty(constraints.ubx)
                 error('setting bounds on x: need idxbx, lbx, ubx, at least one missing.');
             else
@@ -293,6 +298,9 @@ classdef AcadosOcp < handle
                 nbu = length(constraints.lbu);
                 if nbu ~= length(constraints.ubu) || nbu ~= length(constraints.idxbu)
                     error('inconsistent dimension nbu, regarding idxbu, lbu, ubu.');
+                end
+                if min(constraints.idxbu) < 0 || max(constraints.idxbu) > (dims.nu-1)
+                    error(['idxbu should contain (zero-based) indices between 0 and ', num2str(dims.nu-1)])
                 end
             elseif ~isempty(constraints.idxbu) || ~isempty(constraints.lbu) || ~isempty(constraints.ubu)
                 error('setting bounds on u: need idxbu, lbu, ubu, at least one missing.');
@@ -348,6 +356,9 @@ classdef AcadosOcp < handle
                 nbx_e = length(constraints.lbx_e);
                 if nbx_e ~= length(constraints.ubx_e) || nbx_e ~= length(constraints.idxbx_e)
                     error('inconsistent dimension nbx_e, regarding Jbx_e, lbx_e, ubx_e.');
+                end
+                if min(constraints.idxbx_e) < 0 || max(constraints.idxbx_e) > (dims.nx-1)
+                    error(['idxbx_e should contain (zero-based) indices between 0 and ', num2str(dims.nx-1)])
                 end
             elseif ~isempty(constraints.idxbx_e) || ~isempty(constraints.lbx_e) || ~isempty(constraints.ubx_e)
                 error('setting bounds on x: need Jbx_e, lbx_e, ubx_e, at least one missing.');
@@ -583,6 +594,18 @@ classdef AcadosOcp < handle
                 error(['ocp discretization: time_steps between shooting nodes must all be > 0', ...
                     ' got: ' num2str(opts.time_steps)])
             end
+
+            % cost_scaling
+            if isempty(opts.cost_scaling)
+                opts.cost_scaling = [opts.time_steps(:); 1.0];
+            elseif length(opts.cost_scaling) ~= N+1
+                error(['cost_scaling must have length N+1 = ', num2str(N+1)]);
+            end
+
+            % set integrator time automatically
+            opts.Tsim = opts.time_steps(1);
+
+            % integrator: num_stages
             if ~isempty(opts.sim_method_num_stages)
                 if(strcmp(opts.integrator_type, "ERK"))
                     if (any(opts.sim_method_num_stages < 1) || any(opts.sim_method_num_stages > 4))
@@ -590,9 +613,6 @@ classdef AcadosOcp < handle
                     end
                 end
             end
-
-            % set integrator time automatically
-            opts.Tsim = opts.time_steps(1);
 
             % qpdunes
             if ~isempty(strfind(opts.qp_solver,'qpdunes'))
@@ -778,11 +798,6 @@ classdef AcadosOcp < handle
                 end
             end
 
-            % sanity check for Funnel globalization and SQP
-            if strcmp(opts.globalization, 'FUNNEL_L1PEN_LINESEARCH') strcmp(opts.nlp_solver_type, 'SQP')
-                error('FUNNEL_L1PEN_LINESEARCH only supports SQP.')
-            end
-
             if isa(self.zoro_description, 'ZoroDescription')
                 self.zoro_description.process();
             end
@@ -831,7 +846,7 @@ classdef AcadosOcp < handle
             constraint_types = {self.constraints.constr_type_0, self.constraints.constr_type, self.constraints.constr_type_e};
             for n=1:3
                 if strcmp(constraint_types{n}, 'AUTO')
-                    detect_constr(self.model, self.constraints, stage_types{n});
+                    detect_constraint_structure(self.model, self.constraints, stage_types{n});
                 end
             end
         end
@@ -839,10 +854,7 @@ classdef AcadosOcp < handle
         function context = generate_external_functions(ocp, context)
 
             %% generate C code for CasADi functions / copy external functions
-            cost = ocp.cost;
             solver_opts = ocp.solver_options;
-            constraints = ocp.constraints;
-            dims = ocp.dims;
 
             if nargin < 2
                 % options for code generation
@@ -851,10 +863,25 @@ classdef AcadosOcp < handle
                 code_gen_opts.with_solution_sens_wrt_params = solver_opts.with_solution_sens_wrt_params;
                 code_gen_opts.with_value_sens_wrt_params = solver_opts.with_value_sens_wrt_params;
                 code_gen_opts.code_export_directory = ocp.code_export_directory;
+                code_gen_opts.ext_fun_expand = ocp.solver_options.ext_fun_expand;
+
                 context = GenerateContext(ocp.model.p_global, ocp.name, code_gen_opts);
             else
                 code_gen_opts = context.opts;
             end
+            context = setup_code_generation_context(ocp, context, false, false);
+            context.finalize();
+            ocp.external_function_files_model = context.get_external_function_file_list(false);
+            ocp.external_function_files_ocp = context.get_external_function_file_list(true);
+            ocp.dims.n_global_data = context.get_n_global_data();
+        end
+
+        function context = setup_code_generation_context(ocp, context, ignore_initial, ignore_terminal)
+            code_gen_opts = context.opts;
+            solver_opts = ocp.solver_options;
+            constraints = ocp.constraints;
+            cost = ocp.cost;
+            dims = ocp.dims;
 
             % dynamics
             model_dir = fullfile(pwd, code_gen_opts.code_export_directory, [ocp.name '_model']);
@@ -886,6 +913,16 @@ classdef AcadosOcp < handle
                 error('Unknown dyn_ext_fun_type.')
             end
 
+            if ignore_initial && ignore_terminal
+                stage_type_indices = [2];
+            elseif ignore_terminal
+                stage_type_indices = [1, 2];
+            elseif ignore_initial
+                stage_type_indices = [2, 3];
+            else
+                stage_type_indices = [1, 2, 3];
+            end
+
             stage_types = {'initial', 'path', 'terminal'};
 
             % cost
@@ -893,7 +930,9 @@ classdef AcadosOcp < handle
             cost_ext_fun_types = {cost.cost_ext_fun_type_0, cost.cost_ext_fun_type, cost.cost_ext_fun_type_e};
             cost_dir = fullfile(pwd, ocp.code_export_directory, [ocp.name '_cost']);
 
-            for i = 1:3
+            for n = 1:length(stage_type_indices)
+
+                i = stage_type_indices(n);
                 if strcmp(cost_ext_fun_types{i}, 'generic')
                     if strcmp(cost_types{i}, 'EXTERNAL')
                         setup_generic_cost(context, cost, cost_dir, stage_types{i})
@@ -925,7 +964,8 @@ classdef AcadosOcp < handle
             constraints_dims = {dims.nh_0, dims.nh, dims.nh_e};
             constraints_dir = fullfile(pwd, ocp.code_export_directory, [ocp.name '_constraints']);
 
-            for i = 1:3
+            for n = 1:length(stage_type_indices)
+                i = stage_type_indices(n);
                 if strcmp(constraints_types{i}, 'BGH') && constraints_dims{i} > 0
                     generate_c_code_nonlinear_constr(context, ocp.model, constraints_dir, stage_types{i});
                 end
@@ -1025,11 +1065,14 @@ classdef AcadosOcp < handle
                     template_list{end+1} = {fullfile(matlab_template_path, 'acados_sim_solver_sfun.in.c'), ['acados_sim_solver_sfunction_', self.name, '.c']};
                     template_list{end+1} = {fullfile(matlab_template_path, 'make_sfun_sim.in.m'), ['make_sfun_sim.m']};
                 end
-                if self.simulink_opts.inputs.rti_phase && self.solver_options.nlp_solver_type ~= 'SQP_RTI'
+                if self.simulink_opts.inputs.rti_phase && ~strcmp(self.solver_options.nlp_solver_type, 'SQP_RTI')
                     error('rti_phase is only supported for SQP_RTI');
                 end
+                if self.simulink_opts.outputs.KKT_residuals && strcmp(self.solver_options.nlp_solver_type, 'SQP_RTI')
+                    warning('KKT_residuals now computes the residuals of the output iterate in SQP_RTI, this leads to increased computation time, turn off this port if it is not needed. See https://github.com/acados/acados/pull/1346.');
+                end
             else
-                disp("not rendering Simulink related templates, as simulink_opts are not specified.")
+                disp("Not rendering Simulink-related templates, as simulink_opts are not specified.")
             end
         end
 

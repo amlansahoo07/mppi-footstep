@@ -6,6 +6,7 @@ void remove_constraint(DAQPWorkspace* work, const int rm_ind){
     SET_INACTIVE(work->WS[rm_ind]); 
     update_LDL_remove(work,rm_ind);
     (work->n_active)--;
+
     for(i=rm_ind;i<work->n_active;i++){
         work->WS[i] = work->WS[i+1]; 
         work->lam[i] = work->lam[i+1]; 
@@ -14,10 +15,15 @@ void remove_constraint(DAQPWorkspace* work, const int rm_ind){
     if(rm_ind < work->reuse_ind)
         work->reuse_ind = rm_ind;
 
-    // Pivot for improved numerics
-    pivot_last(work);
+    // Check if the removal lead to singularity (can happen due to numerics)
+    if(work->n_active > 0 && work->D[work->n_active-1] < work->settings->zero_tol){
+        work->sing_ind = work->n_active-1;
+        work->D[work->n_active-1] = 0;
+    }
+    else{ // Pivot for improved numerics
+        pivot_last(work);
+    }
 }
-// Maybe take add_ind as input instead?
 void add_constraint(DAQPWorkspace *work, const int add_ind, c_float lam){
     // Update data structures  
     SET_ACTIVE(add_ind);
@@ -81,7 +87,7 @@ void compute_primal_and_fval(DAQPWorkspace *work){
 int add_infeasible(DAQPWorkspace *work){
     int j,k,disp;
     c_float min_val = -work->settings->primal_tol;
-    c_float Mu;
+    c_float Mu,min_cand;
     int isupper=0, add_ind=EMPTY_IND;
     // Simple bounds 
     for(j=0, disp=0;j<N_SIMPLE;j++){
@@ -98,13 +104,17 @@ int add_infeasible(DAQPWorkspace *work){
             for(k=j,Mu=0;k<NX;k++) // 
                 Mu+=work->Rinv[disp++]*work->u[k];
         }
-        if((work->dupper[j]-Mu)<min_val){
+        min_cand = work->dupper[j]-Mu;
+        if(min_cand < min_val){
             add_ind = j; isupper = 1;
-            min_val = work->dupper[j]-Mu;
+            min_val = min_cand;
         }
-        else if(-(work->dlower[j]-Mu)<min_val){
-            add_ind = j; isupper = 0;
-            min_val = -(work->dlower[j]-Mu);
+        else{
+            min_cand = Mu - work->dlower[j];
+            if(min_cand < min_val){
+                add_ind = j; isupper = 0;
+                min_val = min_cand;
+            }
         }
     }
     /* General two-sided constraints */
@@ -117,14 +127,17 @@ int add_infeasible(DAQPWorkspace *work){
         for(k=0,Mu=0;k<NX;k++) 
             Mu+=work->M[disp++]*work->u[k];
 
-        //TODO: check correct sign for slack!
-        if((work->dupper[j]-Mu)<min_val){
+        min_cand = work->dupper[j]-Mu;
+        if(min_cand < min_val){
             add_ind = j; isupper = 1;
-            min_val = work->dupper[j]-Mu;
+            min_val = min_cand;
         }
-        else if(-(work->dlower[j]-Mu)<min_val){
-            add_ind = j; isupper = 0;
-            min_val = -(work->dlower[j]-Mu);
+        else{
+            min_cand = Mu - work->dlower[j];
+            if(min_cand < min_val){
+                add_ind = j; isupper = 0;
+                min_val = min_cand;
+            }
         }
     }
     // No constraint is infeasible => return
@@ -328,34 +341,6 @@ void compute_singular_direction(DAQPWorkspace *work){
             work->lam_star[i] =-work->lam_star[i];
 }
 
-
-void reorder_LDL(DAQPWorkspace *work){
-    // Extract first column l1,: of  L 
-    // and store l1,:^2 in the beginning of L (since L will be overwritten anyways...)  
-    // (a large value of l^2 signify linear dependence with the first constraint)
-    int i,j,disp;
-    c_float swp;
-    for(i = 1, disp = 1; i < work->n_active; i++){
-        work->L[i] = work->L[disp]*work->L[disp];  
-        disp+=i+1;
-    }
-    // Sort l1,:^2 elements (and reorder the working set accordingly)
-    // Bubble sort (use disp for swapping int)
-    for(i=work->n_active-1; i>0; i--){
-        for(j=1; j<i; j++){
-
-            if(work->L[j] > work->L[j+1]){
-                // Swap
-                swp= work->L[j];
-                disp = work->WS[j]; 
-                work->L[j] = work->L[j+1];
-                work->WS[j] = work->WS[j+1];
-                work->L[j+1]= swp; 
-                work->WS[j+1]= disp; 
-            }
-        }
-    }
-}
 
 void pivot_last(DAQPWorkspace *work){
     const int rm_ind = work->n_active-2; 

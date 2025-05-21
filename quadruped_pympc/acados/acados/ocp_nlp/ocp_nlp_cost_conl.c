@@ -38,9 +38,9 @@
 #include <math.h>
 
 // blasfeo
-#include "blasfeo/include/blasfeo_d_aux.h"
-#include "blasfeo/include/blasfeo_d_blas.h"
-#include "blasfeo/include/blasfeo_common.h"
+#include "blasfeo_d_aux.h"
+#include "blasfeo_d_blas.h"
+#include "blasfeo_common.h"
 // acados
 #include "acados/utils/mem.h"
 
@@ -97,6 +97,10 @@ void ocp_nlp_cost_conl_dims_set(void *config_, void *dims_, const char *field, i
         dims->ns = *value;
     }
     else if (!strcmp(field, "np"))
+    {
+        // np dimension not needed
+    }
+    else if (!strcmp(field, "np_global"))
     {
         // np dimension not needed
     }
@@ -271,6 +275,56 @@ int ocp_nlp_cost_conl_model_set(void *config_, void *dims_, void *model_,
 }
 
 
+int ocp_nlp_cost_conl_model_get(void *config_, void *dims_, void *model_,
+                                         const char *field, void *value_)
+{
+    int status = ACADOS_SUCCESS;
+
+    if ( !config_ || !dims_ || !model_ || !value_ )
+    {
+        printf("ocp_nlp_cost_conl_model_get: got NULL pointer \n");
+        exit(1);
+    }
+
+    ocp_nlp_cost_conl_dims *dims = dims_;
+    ocp_nlp_cost_conl_model *model = model_;
+
+    int ny = dims->ny;
+    int ns = dims->ns;
+
+    double * value = (double *) value_;
+
+    if (!strcmp(field, "y_ref") || !strcmp(field, "yref"))
+    {
+        blasfeo_unpack_dvec(ny, &model->y_ref, 0, value, 1);
+    }
+    else if (!strcmp(field, "Zl"))
+    {
+        blasfeo_unpack_dvec(ns, &model->Z, 0, value, 1);
+    }
+    else if (!strcmp(field, "Zu"))
+    {
+        blasfeo_unpack_dvec(ns, &model->Z, ns, value, 1);
+    }
+    else if (!strcmp(field, "zl"))
+    {
+        blasfeo_unpack_dvec(ns, &model->z, 0, value, 1);
+    }
+    else if (!strcmp(field, "zu"))
+    {
+        blasfeo_unpack_dvec(ns, &model->z, ns, value, 1);
+    }
+    else if (!strcmp(field, "scaling"))
+    {
+        value[0] = model->scaling;
+    }
+    else
+    {
+        printf("\nerror: field %s not available in ocp_nlp_cost_conl_model_get\n", field);
+        exit(1);
+    }
+    return status;
+}
 
 /************************************************
  * options
@@ -970,6 +1024,31 @@ void ocp_nlp_cost_conl_eval_grad_p(void *config_, void *dims, void *model_, void
     exit(1);
 }
 
+
+size_t ocp_nlp_cost_conl_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_)
+{
+    ocp_nlp_cost_conl_model *model = model_;
+
+    size_t size = 0;
+    size_t tmp_size;
+
+    tmp_size = external_function_get_workspace_requirement_if_defined(model->conl_cost_fun);
+    size = size > tmp_size ? size : tmp_size;
+    tmp_size = external_function_get_workspace_requirement_if_defined(model->conl_cost_fun_jac_hess);
+    size = size > tmp_size ? size : tmp_size;
+
+    return size;
+}
+
+
+void ocp_nlp_cost_conl_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_)
+{
+    ocp_nlp_cost_conl_model *model = model_;
+    external_function_set_fun_workspace_if_defined(model->conl_cost_fun, workspace_);
+    external_function_set_fun_workspace_if_defined(model->conl_cost_fun_jac_hess, workspace_);
+}
+
+
 void ocp_nlp_cost_conl_config_initialize_default(void *config_, int stage)
 {
     ocp_nlp_cost_config *config = config_;
@@ -981,6 +1060,7 @@ void ocp_nlp_cost_conl_config_initialize_default(void *config_, int stage)
     config->model_calculate_size = &ocp_nlp_cost_conl_model_calculate_size;
     config->model_assign = &ocp_nlp_cost_conl_model_assign;
     config->model_set = &ocp_nlp_cost_conl_model_set;
+    config->model_get = &ocp_nlp_cost_conl_model_get;
     config->opts_calculate_size = &ocp_nlp_cost_conl_opts_calculate_size;
     config->opts_assign = &ocp_nlp_cost_conl_opts_assign;
     config->opts_initialize_default = &ocp_nlp_cost_conl_opts_initialize_default;
@@ -1000,6 +1080,8 @@ void ocp_nlp_cost_conl_config_initialize_default(void *config_, int stage)
     config->memory_set_RSQrq_ptr = &ocp_nlp_cost_conl_memory_set_RSQrq_ptr;
     config->memory_set_Z_ptr = &ocp_nlp_cost_conl_memory_set_Z_ptr;
     config->workspace_calculate_size = &ocp_nlp_cost_conl_workspace_calculate_size;
+    config->get_external_fun_workspace_requirement = &ocp_nlp_cost_conl_get_external_fun_workspace_requirement;
+    config->set_external_fun_workspaces = &ocp_nlp_cost_conl_set_external_fun_workspaces;
     config->initialize = &ocp_nlp_cost_conl_initialize;
     config->update_qp_matrices = &ocp_nlp_cost_conl_update_qp_matrices;
     config->compute_fun = &ocp_nlp_cost_conl_compute_fun;

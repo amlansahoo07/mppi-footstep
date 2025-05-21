@@ -29,7 +29,7 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-import numpy as np
+import os
 from .utils import check_if_nparray_and_flatten
 
 
@@ -46,7 +46,7 @@ class AcadosOcpOptions:
         self.__integrator_type = 'ERK'
         self.__tf = None
         self.__N_horizon = None
-        self.__nlp_solver_type = 'SQP_RTI'
+        self.__nlp_solver_type = 'SQP'
         self.__nlp_solver_tol_stat = 1e-6
         self.__nlp_solver_tol_eq = 1e-6
         self.__nlp_solver_tol_ineq = 1e-6
@@ -54,6 +54,7 @@ class AcadosOcpOptions:
         self.__nlp_solver_max_iter = 100
         self.__nlp_solver_ext_qp_res = 0
         self.__nlp_solver_warm_start_first_qp = False
+        self.__nlp_solver_warm_start_first_qp_from_nlp = False
         self.__nlp_solver_tol_min_step_norm = None
         self.__globalization = 'FIXED_STEP'
         self.__levenberg_marquardt = 0.0
@@ -63,7 +64,9 @@ class AcadosOcpOptions:
         self.__sim_method_newton_iter = 3
         self.__sim_method_newton_tol = 0.0
         self.__sim_method_jac_reuse = 0
+        self.__shooting_nodes = None
         self.__time_steps = None
+        self.__cost_scaling = None
         self.__Tsim = None
         self.__qp_solver = 'PARTIAL_CONDENSING_HPIPM'
         self.__qp_solver_tol_stat = None
@@ -78,11 +81,11 @@ class AcadosOcpOptions:
         self.__qp_solver_ric_alg = 1
         self.__qp_solver_mu0 = 0.0
         self.__rti_log_residuals = 0
+        self.__rti_log_only_available_residuals = 0
         self.__print_level = 0
         self.__cost_discretization = 'EULER'
         self.__regularize_method = 'NO_REGULARIZE'
         self.__reg_epsilon = 1e-4
-        self.__shooting_nodes = None
         self.__exact_hess_cost = 1
         self.__exact_hess_dyn = 1
         self.__exact_hess_constr = 1
@@ -113,8 +116,13 @@ class AcadosOcpOptions:
         self.__adaptive_levenberg_marquardt_mu0 = 1e-3
         self.__log_primal_step_norm: bool = False
         self.__store_iterates: bool = False
+        self.__timeout_max_time = 0.
+        self.__timeout_heuristic = 'LAST'
+
         # TODO: move those out? they are more about generation than about the acados OCP solver.
-        self.__ext_fun_compile_flags = '-O2'
+        env = os.environ
+        self.__ext_fun_compile_flags = '-O2' if 'ACADOS_EXT_FUN_COMPILE_FLAGS' not in env else env['ACADOS_EXT_FUN_COMPILE_FLAGS']
+        self.__ext_fun_expand = False
         self.__model_external_shared_lib_dir = None
         self.__model_external_shared_lib_name = None
         self.__custom_update_filename = ''
@@ -135,10 +143,17 @@ class AcadosOcpOptions:
     def ext_fun_compile_flags(self):
         """
         String with compiler flags for external function compilation.
-        Default: '-O2'.
+        Default: '-O2' if environment variable ACADOS_EXT_FUN_COMPILE_FLAGS is not set, else ACADOS_EXT_FUN_COMPILE_FLAGS is used as default.
         """
         return self.__ext_fun_compile_flags
 
+    @property
+    def ext_fun_expand(self):
+        """
+        Flag indicating whether CasADi.MX should be expanded to CasADi.SX before code generation.
+        Default: False
+        """
+        return self.__ext_fun_expand
 
     @property
     def custom_update_filename(self):
@@ -242,7 +257,7 @@ class AcadosOcpOptions:
     def nlp_solver_type(self):
         """NLP solver.
         String in ('SQP', 'SQP_RTI', 'DDP').
-        Default: 'SQP_RTI'.
+        Default: 'SQP'.
         """
         return self.__nlp_solver_type
 
@@ -306,10 +321,20 @@ class AcadosOcpOptions:
     def nlp_solver_warm_start_first_qp(self):
         """
         Flag indicating whether the first QP in an NLP solve should be warm started.
-        Type: int.
-        Default: 0.
+        Type: bool.
+        Default: False.
         """
         return self.__nlp_solver_warm_start_first_qp
+
+    @property
+    def nlp_solver_warm_start_first_qp_from_nlp(self):
+        """
+        If True first QP will be initialized using values from NLP iterate, otherwise from previous QP solution, only relevant if `nlp_solver_warm_start_first_qp` is True.
+        Type: bool.
+        Default: False.
+        """
+        return self.__nlp_solver_warm_start_first_qp_from_nlp
+
 
     @property
     def levenberg_marquardt(self):
@@ -341,7 +366,7 @@ class AcadosOcpOptions:
     @property
     def sim_method_newton_iter(self):
         """
-        Number of Newton iterations in simulation method.
+        Number of Newton iterations in implicit integrators.
         Type: int > 0
         Default: 3
         """
@@ -350,7 +375,8 @@ class AcadosOcpOptions:
     @property
     def sim_method_newton_tol(self):
         """
-        Tolerance of Newton system in simulation method.
+        Tolerance of Newton system in implicit integrators.
+        This option is not implemented for LIFTED_IRK
         Type: float: 0.0 means not used
         Default: 0.0
         """
@@ -549,10 +575,38 @@ class AcadosOcpOptions:
     def store_iterates(self,):
         """
         Flag indicating whether the intermediate primal-dual iterates should be stored.
-        This is implemented only for solver type `SQP` and `DDP`.
+        This is implemented only for solver types `SQP` and `DDP`.
         Default: False
         """
         return self.__store_iterates
+
+    @property
+    def timeout_max_time(self,):
+        """
+        Maximum time before solver timeout. If 0, there is no timeout.
+        A timeout is triggered if the condition
+        `current_time_tot + predicted_per_iteration_time > timeout_max_time`
+        is satisfied at the end of an SQP iteration.
+        The value of `predicted_per_iteration_time` is estimated using `timeout_heuristic`.
+        Currently implemented for SQP only.
+        Default: 0.
+        """
+        return self.__timeout_max_time
+
+    @property
+    def timeout_heuristic(self,):
+        """
+        Heuristic to be used for predicting the runtime of the next SQP iteration, cf. `timeout_max_time`.
+        Possible values are "MAX_CALL", "MAX_OVERALL", "LAST", "AVERAGE", "ZERO".
+        MAX_CALL: Use the maximum time per iteration for the current solver call as estimate.
+        MAX_OVERALL: Use the maximum time per iteration over all solver calls as estimate.
+        LAST: Use the time required by the last iteration as estimate.
+        AVERAGE: Use an exponential moving average of the previous per iteration times as estimate (weight is currently fixed at 0.5).
+        ZERO: Use 0 as estimate.
+        Currently implemented for SQP only.
+        Default: ZERO.
+        """
+        return self.__timeout_heuristic
 
     @property
     def tol(self):
@@ -825,6 +879,16 @@ class AcadosOcpOptions:
         """
         return self.__rti_log_residuals
 
+    @property
+    def rti_log_only_available_residuals(self):
+        """
+        Relevant if rti_log_residuals is set to 1.
+        If rti_log_only_available_residuals is set to 1, only residuals that do not require additional function evaluations are logged.
+
+        Type: int; 0 or 1;
+        Default: 0.
+        """
+        return self.__rti_log_only_available_residuals
 
     @property
     def nlp_solver_tol_comp(self):
@@ -843,7 +907,9 @@ class AcadosOcpOptions:
     @property
     def time_steps(self):
         """
-        Vector with time steps between the shooting nodes. Set automatically to uniform discretization if :py:attr:`N` and :py:attr:`tf` are provided.
+        Vector of length `N_horizon` containing the time steps between the shooting nodes.
+        If `None` set automatically to uniform discretization using :py:attr:`N_horizon` and :py:attr:`tf`.
+        For nonuniform discretization: Either provide shooting_nodes or time_steps.
         Default: :code:`None`
         """
         return self.__time_steps
@@ -851,10 +917,21 @@ class AcadosOcpOptions:
     @property
     def shooting_nodes(self):
         """
-        Vector with the shooting nodes, time_steps will be computed from it automatically.
+        Vector of length `N_horizon + 1` containing the shooting nodes.
+        If `None` set automatically to uniform discretization using :py:attr:`N_horizon` and :py:attr:`tf`.
+        For nonuniform discretization: Either provide shooting_nodes or time_steps.
         Default: :code:`None`
         """
         return self.__shooting_nodes
+
+    @property
+    def cost_scaling(self):
+        """
+        Vector with cost scaling factors of length `N_horizon` + 1.
+        If `None` set automatically to [`time_steps`, 1.0].
+        Default: :code:`None`
+        """
+        return self.__cost_scaling
 
     @property
     def tf(self):
@@ -1043,8 +1120,14 @@ class AcadosOcpOptions:
         if isinstance(ext_fun_compile_flags, str):
             self.__ext_fun_compile_flags = ext_fun_compile_flags
         else:
-            raise Exception('Invalid ext_fun_compile_flags, expected a string.\n')
+            raise Exception('Invalid ext_fun_compile_flags value, expected a string.\n')
 
+    @ext_fun_expand.setter
+    def ext_fun_expand(self, ext_fun_expand):
+        if isinstance(ext_fun_expand, bool):
+            self.__ext_fun_expand = ext_fun_expand
+        else:
+            raise Exception('Invalid ext_fun_expand value, expected bool.\n')
 
     @custom_update_filename.setter
     def custom_update_filename(self, custom_update_filename):
@@ -1116,6 +1199,11 @@ class AcadosOcpOptions:
     def shooting_nodes(self, shooting_nodes):
         shooting_nodes = check_if_nparray_and_flatten(shooting_nodes, "shooting_nodes")
         self.__shooting_nodes = shooting_nodes
+
+    @cost_scaling.setter
+    def cost_scaling(self, cost_scaling):
+        cost_scaling = check_if_nparray_and_flatten(cost_scaling, "cost_scaling")
+        self.__cost_scaling = cost_scaling
 
     @Tsim.setter
     def Tsim(self, Tsim):
@@ -1323,6 +1411,12 @@ class AcadosOcpOptions:
         else:
             raise Exception('Invalid nlp_solver_warm_start_first_qp value. Expected bool.')
 
+    @nlp_solver_warm_start_first_qp_from_nlp.setter
+    def nlp_solver_warm_start_first_qp_from_nlp(self, nlp_solver_warm_start_first_qp_from_nlp):
+        if not isinstance(nlp_solver_warm_start_first_qp_from_nlp, bool):
+            raise Exception('Invalid nlp_solver_warm_start_first_qp_from_nlp value. Expected bool.')
+        self.__nlp_solver_warm_start_first_qp_from_nlp = nlp_solver_warm_start_first_qp_from_nlp
+
     @levenberg_marquardt.setter
     def levenberg_marquardt(self, levenberg_marquardt):
         if isinstance(levenberg_marquardt, float) and levenberg_marquardt >= 0:
@@ -1385,6 +1479,20 @@ class AcadosOcpOptions:
             self.__store_iterates = val
         else:
             raise Exception('Invalid store_iterates value. Expected bool.')
+
+    @timeout_max_time.setter
+    def timeout_max_time(self, val):
+        if isinstance(val, float) and val >= 0:
+            self.__timeout_max_time = val
+        else:
+            raise Exception('Invalid timeout_max_time value. Expected nonnegative float.')
+
+    @timeout_heuristic.setter
+    def timeout_heuristic(self, val):
+        if val in ["MAX_CALL", "MAX_OVERALL", "LAST", "AVERAGE", "ZERO"]:
+            self.__timeout_heuristic = val
+        else:
+            raise Exception('Invalid timeout_heuristic value. Expected value in ["MAX_CALL", "MAX_OVERALL", "LAST", "AVERAGE", "ZERO"].')
 
     @as_rti_iter.setter
     def as_rti_iter(self, as_rti_iter):
@@ -1528,6 +1636,13 @@ class AcadosOcpOptions:
             self.__rti_log_residuals = rti_log_residuals
         else:
             raise Exception('Invalid rti_log_residuals value. rti_log_residuals must be in [0, 1].')
+
+    @rti_log_only_available_residuals.setter
+    def rti_log_only_available_residuals(self, rti_log_only_available_residuals):
+        if rti_log_only_available_residuals in [0, 1]:
+            self.__rti_log_only_available_residuals = rti_log_only_available_residuals
+        else:
+            raise Exception('Invalid rti_log_only_available_residuals value. rti_log_only_available_residuals must be in [0, 1].')
 
     @nlp_solver_tol_comp.setter
     def nlp_solver_tol_comp(self, nlp_solver_tol_comp):

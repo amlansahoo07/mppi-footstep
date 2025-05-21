@@ -40,12 +40,13 @@
 #include "acados_solver_centroidal_model.h"
 
 // blasfeo
-#include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
+#include "blasfeo_d_aux_ext_dep.h"
 
 #define NX     CENTROIDAL_MODEL_NX
 #define NP     CENTROIDAL_MODEL_NP
 #define NU     CENTROIDAL_MODEL_NU
 #define NBX0   CENTROIDAL_MODEL_NBX0
+#define NP_GLOBAL   CENTROIDAL_MODEL_NP_GLOBAL
 
 
 int main()
@@ -219,7 +220,7 @@ int main()
         }
         ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, N, "x", x_init);
         status = centroidal_model_acados_solve(acados_ocp_capsule);
-        ocp_nlp_get(nlp_config, nlp_solver, "time_tot", &elapsed_time);
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed_time);
         min_time = MIN(elapsed_time, min_time);
     }
 
@@ -248,13 +249,15 @@ int main()
 
     // get solution
     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "kkt_norm_inf", &kkt_norm_inf);
-    ocp_nlp_get(nlp_config, nlp_solver, "sqp_iter", &sqp_iter);
+    ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
     centroidal_model_acados_print_stats(acados_ocp_capsule);
 
     printf("\nSolver info:\n");
     printf(" SQP iterations %2d\n minimum time for %d solve %f [ms]\n KKT %e\n",
            sqp_iter, NTIMINGS, min_time*1000, kkt_norm_inf);
+
+
 
     // free solver
     status = centroidal_model_acados_free(acados_ocp_capsule);

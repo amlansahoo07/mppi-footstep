@@ -33,8 +33,43 @@ from dataclasses import dataclass
 from typing import List
 import numpy as np
 
+
+@dataclass
+class AcadosOcpFlattenedIterate:
+    """
+    This class is used to store the primal-dual iterate of an optimal control problem in a flattened form.
+    This allows faster interactions with the solver.
+    """
+    x: np.ndarray
+    u: np.ndarray
+    z: np.ndarray
+    sl: np.ndarray
+    su: np.ndarray
+    pi: np.ndarray
+    lam: np.ndarray
+
+
+@dataclass
+class AcadosOcpFlattenedBatchIterate:
+    """
+    Similar to :py:class:`~acados_template.acados_ocp.AcadosOcpFlattenedIterate` but with an additional field N_batch.
+    The fields x, u, z, sl, su, pi, lam are of shape (N_batch, nx_total), (N_batch, nu_total), etc.
+    """
+    x: np.ndarray # shape (N_batch, nx_total)
+    u: np.ndarray # shape (N_batch, nu_total)
+    z: np.ndarray
+    sl: np.ndarray
+    su: np.ndarray
+    pi: np.ndarray
+    lam: np.ndarray
+    N_batch: int
+
+
 @dataclass
 class AcadosOcpIterate:
+    """
+    This class is used to store the primal-dual iterate of an optimal control problem.
+    """
 
     x_traj: List[np.ndarray]
     u_traj: List[np.ndarray]
@@ -44,8 +79,22 @@ class AcadosOcpIterate:
     pi_traj: List[np.ndarray]
     lam_traj: List[np.ndarray]
 
+    def flatten(self) -> AcadosOcpFlattenedIterate:
+        return AcadosOcpFlattenedIterate(
+            x=np.concatenate(self.x_traj),
+            u=np.concatenate(self.u_traj),
+            z=np.concatenate(self.z_traj),
+            sl=np.concatenate(self.sl_traj),
+            su=np.concatenate(self.su_traj),
+            pi=np.concatenate(self.pi_traj),
+            lam=np.concatenate(self.lam_traj),
+        )
+
 @dataclass
 class AcadosOcpIterates:
+    """
+    This class is used to store a list of :py:class:`~acados_template.acados_ocp.AcadosOcpIterate` objects.
+    """
 
     iterate_list: List[AcadosOcpIterate]
     __iterate_fields = ["x", "u", "z", "sl", "su", "pi", "lam"]

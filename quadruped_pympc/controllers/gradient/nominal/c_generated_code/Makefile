@@ -145,8 +145,8 @@ ocp_cython_o: ocp_cython_c
 	-I $(INCLUDE_PATH)/blasfeo/include/ \
 	-I $(INCLUDE_PATH)/hpipm/include/ \
 	-I $(INCLUDE_PATH) \
-	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_ros2_env/lib/python3.11/site-packages/numpy/core/include \
-	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_ros2_env/include/python3.11 \
+	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_env/lib/python3.11/site-packages/numpy/core/include \
+	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_env/include/python3.11 \
 	acados_ocp_solver_pyx.c \
 
 ocp_cython: ocp_cython_o
@@ -173,8 +173,8 @@ sim_cython_o: sim_cython_c
 	-I $(INCLUDE_PATH)/blasfeo/include/ \
 	-I $(INCLUDE_PATH)/hpipm/include/ \
 	-I $(INCLUDE_PATH) \
-	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_ros2_env/lib/python3.11/site-packages/numpy/core/include \
-	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_ros2_env/include/python3.11 \
+	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_env/lib/python3.11/site-packages/numpy/core/include \
+	-I /home/amlansahoo07/miniforge3/envs/quadruped_pympc_env/include/python3.11 \
 	acados_sim_solver_pyx.c \
 
 sim_cython: sim_cython_o

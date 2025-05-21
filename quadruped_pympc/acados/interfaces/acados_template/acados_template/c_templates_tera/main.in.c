@@ -45,12 +45,13 @@
 #include "acados_solver_{{ name }}.h"
 
 // blasfeo
-#include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
+#include "blasfeo_d_aux_ext_dep.h"
 
 #define NX     {{ name | upper }}_NX
 #define NP     {{ name | upper }}_NP
 #define NU     {{ name | upper }}_NU
 #define NBX0   {{ name | upper }}_NBX0
+#define NP_GLOBAL   {{ name | upper }}_NP_GLOBAL
 
 
 int main()
@@ -120,7 +121,7 @@ int main()
         }
         ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, N, "x", x_init);
         status = {{ name }}_acados_solve(acados_ocp_capsule);
-        ocp_nlp_get(nlp_config, nlp_solver, "time_tot", &elapsed_time);
+        ocp_nlp_get(nlp_solver, "time_tot", &elapsed_time);
         min_time = MIN(elapsed_time, min_time);
     }
 
@@ -154,13 +155,23 @@ int main()
 
     // get solution
     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "kkt_norm_inf", &kkt_norm_inf);
-    ocp_nlp_get(nlp_config, nlp_solver, "sqp_iter", &sqp_iter);
+    ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
     {{ name }}_acados_print_stats(acados_ocp_capsule);
 
     printf("\nSolver info:\n");
     printf(" SQP iterations %2d\n minimum time for %d solve %f [ms]\n KKT %e\n",
            sqp_iter, NTIMINGS, min_time*1000, kkt_norm_inf);
+
+{% if solver_options.with_solution_sens_wrt_params %}
+    // evaluate adjoint solution sensitivities wrt p_global
+    ocp_nlp_out *sens_out = {{ name }}_acados_get_sens_out(acados_ocp_capsule);
+    ocp_nlp_out_set_values_to_zero(nlp_config, nlp_dims, sens_out);
+    ocp_nlp_eval_params_jac(nlp_solver, nlp_in, nlp_out);
+    double tmp_p_global[NP_GLOBAL];
+    ocp_nlp_eval_solution_sens_adj_p(nlp_solver, nlp_in, sens_out, "p_global", 0, tmp_p_global);
+    printf("\nSucessfully evaluated adjoint solution sensitivities wrt p_global.\n");
+{%- endif %}
 
     // free solver
     status = {{ name }}_acados_free(acados_ocp_capsule);
