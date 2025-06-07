@@ -40,6 +40,9 @@ class Sampling_MPC:
         self.max_sampling_forces_y = 10
         self.max_sampling_forces_z = 30
 
+        # Amlan paramters
+        self.best_foothold_offsets = jnp.zeros(8)  # 2 offsets for each foot (x, y)
+
         if device == "gpu":
             try:
                 self.device = jax.devices("gpu")[0]
@@ -104,6 +107,9 @@ class Sampling_MPC:
             self.sigma_cem_mppi = (
                 jnp.ones(self.num_control_parameters, dtype=dtype_general) * config.mpc_params['sigma_cem_mppi']
             )
+        elif self.sampling_method == 'new_mppi':
+            self.compute_control = self.compute_control_mppi_amlan
+            self.sigma_mppi = config.mpc_params['sigma_mppi']
         else:
             # return error and stop execution
             print("Error: sampling method not recognized")
@@ -175,6 +181,52 @@ class Sampling_MPC:
         # jitting the vmap function!
         self.vectorized_rollout = jax.vmap(self.compute_rollout, in_axes=(None, None, 0, None), out_axes=0)
         self.jit_vectorized_rollout = jax.jit(self.vectorized_rollout, device=self.device)
+
+        # NEW Amlan: JIT compile the new foothold rollout function
+        self.jit_vectorized_rollout_with_footholds = jax.jit(self.jit_vectorized_rollout_with_footholds, device=self.device)
+
+    # Amlan functions
+    def jit_vectorized_rollout_with_footholds(self, state, reference, control_parameters_vec, contact_sequence, foothold_offsets_vec):
+        """Vectorized rollout that includes foothold position modifications."""
+        
+        def single_rollout_with_footholds(control_parameters, foothold_offsets):
+            return self.compute_rollout_with_footholds(state, reference, control_parameters, contact_sequence, foothold_offsets)
+        
+        # Vectorize over both control parameters and foothold offsets
+        vectorized_rollout = jax.vmap(single_rollout_with_footholds, in_axes=(0, 0))
+        return vectorized_rollout(control_parameters_vec, foothold_offsets_vec)
+
+    def compute_rollout_with_footholds(self, initial_state, reference, control_parameters, contact_sequence, foothold_offsets):
+        """Compute rollout cost with modified foothold positions."""
+        
+        # Modify the reference foot positions based on foothold_offsets
+        modified_reference = self.apply_foothold_offsets_to_reference(reference, foothold_offsets)
+        
+        # Use existing compute_rollout with modified reference
+        return self.compute_rollout(initial_state, modified_reference, control_parameters, contact_sequence)
+
+    def apply_foothold_offsets_to_reference(self, reference, foothold_offsets):
+        """Apply foothold offsets to the reference trajectory."""
+        modified_reference = reference.copy()
+        
+        # Apply offsets to each foot's reference position
+        # FL foot (indices 12-14 in reference vector)
+        modified_reference = modified_reference.at[12].add(foothold_offsets[0])  # x offset
+        modified_reference = modified_reference.at[13].add(foothold_offsets[1])  # y offset
+        
+        # FR foot (indices 15-17)
+        modified_reference = modified_reference.at[15].add(foothold_offsets[2])
+        modified_reference = modified_reference.at[16].add(foothold_offsets[3])
+        
+        # RL foot (indices 18-20)
+        modified_reference = modified_reference.at[18].add(foothold_offsets[4])
+        modified_reference = modified_reference.at[19].add(foothold_offsets[5])
+        
+        # RR foot (indices 21-23)
+        modified_reference = modified_reference.at[21].add(foothold_offsets[6])
+        modified_reference = modified_reference.at[22].add(foothold_offsets[7])
+        
+        return modified_reference
 
 
 
@@ -1092,6 +1144,183 @@ class Sampling_MPC:
             costs,
             new_sigma_cem_mppi,
         )
+
+    def compute_control_mppi_amlan(
+        self,
+        state,
+        reference,
+        contact_sequence,
+        best_control_parameters,
+        best_foothold_offsets,
+        key,
+        timing,
+        nominal_step_frequency,
+        optimize_swing,
+    ):
+        """
+        This function computes the control parameters by applying MPPI. In addition, this is an attempt to optimize the foothold offsets.
+        """
+
+        # Generate random parameters
+        # The first control parameters is the old best one, so we add zero noise there
+        additional_random_parameters = self.initial_random_parameters * 0.0
+
+        # GAUSSIAN
+        num_sample_gaussian_1 = self.num_parallel_computations - 1
+        additional_random_parameters = additional_random_parameters.at[1 : self.num_parallel_computations].set(
+            self.sigma_mppi * jax.random.normal(key=key, shape=(num_sample_gaussian_1, self.num_control_parameters))
+        )
+
+        control_parameters_vec = best_control_parameters + additional_random_parameters
+
+        # NEW AMLAN: Generate random parameters for foothold offsets
+        sigma_foothold = 0.05
+        foothold_noise = sigma_foothold * jax.random.normal(
+            key=jax.random.split(key)[1], 
+            shape=(self.num_parallel_computations, 8)  # 8 parameters: x,y offsets for each foot
+        )
+        # First trajectory uses best known foothold offsets, others are variations
+        foothold_offsets_vec = jnp.zeros((self.num_parallel_computations, 8))
+        foothold_offsets_vec = foothold_offsets_vec.at[0].set(best_foothold_offsets)
+        foothold_offsets_vec = foothold_offsets_vec.at[1:].set(
+            best_foothold_offsets + foothold_noise[1:]
+        )
+
+        # # Do rollout
+        # costs = self.jit_vectorized_rollout(state, reference, control_parameters_vec, contact_sequence)
+
+        # NEW: Do rollout with both GRF and foothold parameters
+        costs = self.jit_vectorized_rollout_with_footholds(
+            state, reference, control_parameters_vec, contact_sequence, foothold_offsets_vec
+        )
+
+        # Saturate the cost in case of NaN or inf
+        costs = jnp.where(jnp.isnan(costs), 1000000, costs)
+        costs = jnp.where(jnp.isinf(costs), 1000000, costs)
+
+        # Take the best found control parameters
+        best_index = jnp.nanargmin(costs)
+        best_cost = costs.take(best_index)
+
+        # Compute MPPI update
+        # beta = best_cost
+        # temperature = 1.0
+        # exp_costs = jnp.exp((-1.0 / temperature) * (costs - beta))
+        # denom = np.sum(exp_costs)
+        # weights = exp_costs / denom
+        # weighted_inputs = weights[:, jnp.newaxis, jnp.newaxis] * additional_random_parameters.reshape(
+        #     (self.num_parallel_computations, self.num_control_parameters, 1)
+        # )
+        # best_control_parameters += jnp.sum(weighted_inputs, axis=0).reshape((self.num_control_parameters,))
+
+        # NEW: Weighted average for MPPI update
+        min_cost = jnp.nanmin(costs)
+        temperature = 1.0
+        weights = jnp.exp(-(costs - min_cost) / temperature)
+        weights = weights / jnp.sum(weights)  # Normalize weights
+
+        # Update both control parameters and foothold offsets
+        updated_control_parameters = jnp.sum(weights[:, None] * control_parameters_vec, axis=0)
+        updated_foothold_offsets = jnp.sum(weights[:, None] * foothold_offsets_vec, axis=0)
+
+        # Use the updated parameters
+        best_control_parameters = updated_control_parameters
+
+        # BACK TO ORIGINAL FLOW: And redistribute it to each leg
+        best_control_parameters_FL = best_control_parameters[0 : self.num_control_parameters_single_leg]
+        best_control_parameters_FR = best_control_parameters[
+            self.num_control_parameters_single_leg : self.num_control_parameters_single_leg * 2
+        ]
+        best_control_parameters_RL = best_control_parameters[
+            self.num_control_parameters_single_leg * 2 : self.num_control_parameters_single_leg * 3
+        ]
+        best_control_parameters_RR = best_control_parameters[
+            self.num_control_parameters_single_leg * 3 : self.num_control_parameters_single_leg * 4
+        ]
+
+        # Compute the GRF associated to the best parameter
+        fx_FL, fy_FL, fz_FL = self.spline_fun_FL(best_control_parameters_FL, 0.0, 1)
+        fx_FR, fy_FR, fz_FR = self.spline_fun_FR(best_control_parameters_FR, 0.0, 1)
+        fx_RL, fy_RL, fz_RL = self.spline_fun_RL(best_control_parameters_RL, 0.0, 1)
+        fx_RR, fy_RR, fz_RR = self.spline_fun_RR(best_control_parameters_RR, 0.0, 1)
+
+        # Add the gravity compensation to the stance legs and put to zero
+        # the GRF of the swing legs
+        number_of_legs_in_stance = (
+            contact_sequence[0][0] + contact_sequence[1][0] + contact_sequence[2][0] + contact_sequence[3][0]
+        )
+        reference_force_stance_legs = (self.robot.mass * 9.81) / number_of_legs_in_stance
+
+        fz_FL = reference_force_stance_legs + fz_FL
+        fz_FR = reference_force_stance_legs + fz_FR
+        fz_RL = reference_force_stance_legs + fz_RL
+        fz_RR = reference_force_stance_legs + fz_RR
+
+        fx_FL = fx_FL * contact_sequence[0][0] / (self.max_sampling_forces_z/self.max_sampling_forces_x)
+        fy_FL = fy_FL * contact_sequence[0][0] / (self.max_sampling_forces_z/self.max_sampling_forces_y)
+        fz_FL = fz_FL * contact_sequence[0][0] 
+
+        fx_FR = fx_FR * contact_sequence[1][0] / (self.max_sampling_forces_z/self.max_sampling_forces_x)
+        fy_FR = fy_FR * contact_sequence[1][0] / (self.max_sampling_forces_z/self.max_sampling_forces_y)
+        fz_FR = fz_FR * contact_sequence[1][0]
+
+        fx_RL = fx_RL * contact_sequence[2][0] / (self.max_sampling_forces_z/self.max_sampling_forces_x)
+        fy_RL = fy_RL * contact_sequence[2][0] / (self.max_sampling_forces_z/self.max_sampling_forces_y)
+        fz_RL = fz_RL * contact_sequence[2][0]
+
+        fx_RR = fx_RR * contact_sequence[3][0] / (self.max_sampling_forces_z/self.max_sampling_forces_x)
+        fy_RR = fy_RR * contact_sequence[3][0] / (self.max_sampling_forces_z/self.max_sampling_forces_y)
+        fz_RR = fz_RR * contact_sequence[3][0]
+
+        # Enforce force constraints
+        fx_FL, fy_FL, fz_FL, fx_FR, fy_FR, fz_FR, fx_RL, fy_RL, fz_RL, fx_RR, fy_RR, fz_RR = (
+            self.enforce_force_constraints(
+                fx_FL, fy_FL, fz_FL, fx_FR, fy_FR, fz_FR, fx_RL, fy_RL, fz_RL, fx_RR, fy_RR, fz_RR
+            )
+        )
+
+        nmpc_GRFs = jnp.array([fx_FL, fy_FL, fz_FL, fx_FR, fy_FR, fz_FR, fx_RL, fy_RL, fz_RL, fx_RR, fy_RR, fz_RR])
+        nmpc_footholds = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+        # Compute predicted state for IK
+        input = jnp.array(
+            [
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                jnp.float32(0),
+                fx_FL,
+                fy_FL,
+                fz_FL,
+                fx_FR,
+                fy_FR,
+                fz_FR,
+                fx_RL,
+                fy_RL,
+                fz_RL,
+                fx_RR,
+                fy_RR,
+                fz_RR,
+            ],
+            dtype=dtype_general,
+        )
+        current_contact = jnp.array(
+            [contact_sequence[0][0], contact_sequence[1][0], contact_sequence[2][0], contact_sequence[3][0]],
+            dtype=dtype_general,
+        )
+        nmpc_predicted_state = self.robot.integrate_jax(state, input, current_contact, 0)
+
+        best_freq = 1.4
+
+        return nmpc_GRFs, updated_foothold_offsets, nmpc_predicted_state, best_control_parameters, best_cost, best_freq, costs
 
     def reset(self):
         print("Resetting the controller")

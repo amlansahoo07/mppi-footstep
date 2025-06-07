@@ -122,6 +122,23 @@ class SRBDControllerInterface:
             )
             self.previous_contact_mpc = current_contact
 
+            # Amlan EXTRACT ref_feet_pos from ref_state HERE (before the sampling loop)
+            
+            if self.controller.sampling_method == 'new_mppi':
+                # ref_feet_pos = LegsAttr(
+                #     FL=ref_state["ref_foot_FL"],
+                #     FR=ref_state["ref_foot_FR"],
+                #     RL=ref_state["ref_foot_RL"],
+                #     RR=ref_state["ref_foot_RR"],
+                # )
+
+                ref_feet_pos = LegsAttr(
+                    FL=ref_state["ref_foot_FL"].flatten(),
+                    FR=ref_state["ref_foot_FR"].flatten(),
+                    RL=ref_state["ref_foot_RL"].flatten(),
+                    RR=ref_state["ref_foot_RR"].flatten(),
+                )
+
             for iter_sampling in range(self.controller.num_sampling_iterations):
                 self.controller = self.controller.with_newkey()
                 if self.controller.sampling_method == 'cem_mppi':
@@ -146,6 +163,33 @@ class SRBDControllerInterface:
                         self.controller.sigma_cem_mppi,
                     )
                     self.controller = self.controller.with_newsigma(sigma_cem_mppi)
+                elif self.controller.sampling_method == 'new_mppi':
+                    print("Inside custom sampling method block Amlan")
+
+                    nominal_sample_freq = pgg_step_freq
+                    (
+                        nmpc_GRFs,
+                        optimized_foothold_offsets,
+                        nmpc_predicted_state,
+                        self.controller.best_control_parameters,
+                        best_cost,
+                        best_sample_freq,
+                        costs,
+                    ) = self.controller.jitted_compute_control(
+                        state_current_jax,
+                        reference_state_jax,
+                        contact_sequence,
+                        self.controller.best_control_parameters,
+                        self.controller.best_foothold_offsets,
+                        self.controller.master_key,
+                        pgg_phase_signal,
+                        nominal_sample_freq,
+                        optimize_swing,
+                    )
+
+                    # Store the optimized foothold offsets for next iteration
+                    self.controller.best_foothold_offsets = optimized_foothold_offsets
+
                 else:
                     nominal_sample_freq = pgg_step_freq
                     (
@@ -166,13 +210,29 @@ class SRBDControllerInterface:
                         nominal_sample_freq,
                         optimize_swing,
                     )
+                
+                if self.controller.sampling_method == 'new_mppi':
+                    # Amlan: Apply foothold offsets to the reference footholds after sampling loop
+                    adjusted_ref_feet_pos = self.apply_foothold_adjustments(ref_feet_pos, optimized_foothold_offsets)
 
-            nmpc_footholds = LegsAttr(
-                FL=ref_state["ref_foot_FL"][0],
-                FR=ref_state["ref_foot_FR"][0],
-                RL=ref_state["ref_foot_RL"][0],
-                RR=ref_state["ref_foot_RR"][0],
-            )
+
+            # Amlan: UPDATE nmpc_footholds to use the ADJUSTED foothold positions
+
+            if self.controller.sampling_method == 'new_mppi':
+                nmpc_footholds = LegsAttr(
+                    FL=adjusted_ref_feet_pos.FL,  # Use adjusted positions instead of ref_state
+                    FR=adjusted_ref_feet_pos.FR,
+                    RL=adjusted_ref_feet_pos.RL,
+                    RR=adjusted_ref_feet_pos.RR,
+                )
+            else:
+                nmpc_footholds = LegsAttr(
+                    FL=ref_state["ref_foot_FL"][0],
+                    FR=ref_state["ref_foot_FR"][0],
+                    RL=ref_state["ref_foot_RL"][0],
+                    RR=ref_state["ref_foot_RR"][0],
+                )
+
             nmpc_GRFs = np.array(nmpc_GRFs)
 
             nmpc_joints_pos = None
@@ -238,6 +298,73 @@ class SRBDControllerInterface:
             best_sample_freq,
             nmpc_predicted_state,
         )
+
+    # def apply_foothold_adjustments(self, ref_feet_pos, foothold_offsets):
+    #     """Amlan: Apply foothold offsets to the reference foot positions."""
+    #     import copy
+    
+    #     # Ensure foothold_offsets is the right shape and type
+    #     foothold_offsets = np.array(foothold_offsets)
+    #     if foothold_offsets.shape[0] != 8:
+    #         print(f"Warning: foothold_offsets has shape {foothold_offsets.shape}, expected (8,). Using zeros.")
+    #         foothold_offsets = np.zeros(8)
+        
+    #     adjusted_feet_pos = copy.deepcopy(ref_feet_pos)
+        
+    #     # Apply offsets (foothold_offsets has 8 elements: x,y for each foot)
+    #     if adjusted_feet_pos.FL.ndim == 2:
+    #         # If it's (1,3) shape, access as [0, 0] and [0, 1]
+    #         adjusted_feet_pos.FL[0, 0] += foothold_offsets[0]  # FL x
+    #         adjusted_feet_pos.FL[0, 1] += foothold_offsets[1]  # FL y
+    #         adjusted_feet_pos.FR[0, 0] += foothold_offsets[2]  # FR x
+    #         adjusted_feet_pos.FR[0, 1] += foothold_offsets[3]  # FR y
+    #         adjusted_feet_pos.RL[0, 0] += foothold_offsets[4]  # RL x
+    #         adjusted_feet_pos.RL[0, 1] += foothold_offsets[5]  # RL y
+    #         adjusted_feet_pos.RR[0, 0] += foothold_offsets[6]  # RR x
+    #         adjusted_feet_pos.RR[0, 1] += foothold_offsets[7]  # RR y
+    #     else:
+    #         # If it's (3,) shape, access as [0] and [1]
+    #         adjusted_feet_pos.FL[0] += foothold_offsets[0]  # FL x
+    #         adjusted_feet_pos.FL[1] += foothold_offsets[1]  # FL y
+    #         adjusted_feet_pos.FR[0] += foothold_offsets[2]  # FR x
+    #         adjusted_feet_pos.FR[1] += foothold_offsets[3]  # FR y
+    #         adjusted_feet_pos.RL[0] += foothold_offsets[4]  # RL x
+    #         adjusted_feet_pos.RL[1] += foothold_offsets[5]  # RL y
+    #         adjusted_feet_pos.RR[0] += foothold_offsets[6]  # RR x
+    #         adjusted_feet_pos.RR[1] += foothold_offsets[7]  # RR y
+
+    #     return adjusted_feet_pos
+
+    def apply_foothold_adjustments(self, ref_feet_pos, foothold_offsets):
+        """Amlan: Apply foothold offsets to the reference foot positions."""
+        import copy
+        
+        # Ensure foothold_offsets is the right shape and type
+        foothold_offsets = np.array(foothold_offsets)
+        if foothold_offsets.shape[0] != 8:
+            print(f"Warning: foothold_offsets has shape {foothold_offsets.shape}, expected (8,). Using zeros.")
+            foothold_offsets = np.zeros(8)
+        
+        adjusted_feet_pos = copy.deepcopy(ref_feet_pos)
+        
+        # NORMALIZE ALL FOOT POSITIONS TO (3,) SHAPE
+        # This ensures consistent shape throughout the pipeline
+        for leg_name in ['FL', 'FR', 'RL', 'RR']:
+            if adjusted_feet_pos[leg_name].ndim == 2:
+                # Convert (1,3) to (3,) by flattening
+                adjusted_feet_pos[leg_name] = adjusted_feet_pos[leg_name].flatten()
+        
+        # Now apply offsets - all arrays are guaranteed to be (3,) shape
+        adjusted_feet_pos.FL[0] += foothold_offsets[0]  # FL x
+        adjusted_feet_pos.FL[1] += foothold_offsets[1]  # FL y
+        adjusted_feet_pos.FR[0] += foothold_offsets[2]  # FR x
+        adjusted_feet_pos.FR[1] += foothold_offsets[3]  # FR y
+        adjusted_feet_pos.RL[0] += foothold_offsets[4]  # RL x
+        adjusted_feet_pos.RL[1] += foothold_offsets[5]  # RL y
+        adjusted_feet_pos.RR[0] += foothold_offsets[6]  # RR x
+        adjusted_feet_pos.RR[1] += foothold_offsets[7]  # RR y
+
+        return adjusted_feet_pos
 
     def compute_RTI(self):
         self.controller.acados_ocp_solver.options_set("rti_phase", 1)

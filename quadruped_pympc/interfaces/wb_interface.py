@@ -191,9 +191,12 @@ class WBInterface:
         contact_sequence = self.pgg.compute_contact_sequence(
             contact_sequence_dts=self.contact_sequence_dts, contact_sequence_lenghts=self.contact_sequence_lenghts
         )
+
+        # contact_sequence = np.ones((4, 12), dtype=np.int32) # Amlan
         
-        print("Current contact: ", self.current_contact)
-        print("Contact sequence: ", contact_sequence)
+        # # Amlan
+        # print("Current contact: ", self.current_contact)
+        # print("Contact sequence: ", contact_sequence)
 
         self.previous_contact = copy.deepcopy(self.current_contact)
         self.current_contact = np.array(

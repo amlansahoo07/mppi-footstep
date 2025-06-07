@@ -284,14 +284,6 @@ def run_simulation(
 
                 # Plot the contact sequence - Amlan
                 from quadruped_pympc.helpers.quadruped_utils import plot_contact_sequence_mujoco
-                
-                # # Get the most recent contact sequence from wrapper - Amlan
-                # contact_sequence = quadrupedpympc_wrapper.wb_interface.pgg.compute_contact_sequence(
-                #     contact_sequence_dts=quadrupedpympc_wrapper.wb_interface.contact_sequence_dts, 
-                #     contact_sequence_lenghts=quadrupedpympc_wrapper.wb_interface.contact_sequence_lenghts
-                # )
-
-                print("Contact sequence viz: ", quadrupedpympc_wrapper.contact_sequence_viz)
                 contact_sequence = quadrupedpympc_wrapper.contact_sequence_viz
                 
                 # Visualize the contact sequence - Amlan
@@ -301,7 +293,7 @@ def run_simulation(
                     base_pos=base_pos,
                     base_height=cfg.hip_height,
                     dt=cfg.mpc_params['dt'],
-                    geom_ids=contact_sequence_geom_ids,
+                    geom_ids=contact_sequence_geom_ids
                 )
 
                 # Update and Plot the heightmap
